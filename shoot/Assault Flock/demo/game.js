@@ -9,6 +9,7 @@ const H            = 700;
 const FLOCK_X      = W / 2;
 const FLOCK_Y      = H * 0.70;
 const BOSS_TRIGGER = 65;     // seconds until boss spawns
+const BOSS_FIGHT_Y = 300;   // px — boss parks here after entering from off-screen
 const SIM_TICK     = 0.15;   // call card evaluation interval (s)
 const CARD_COOLDOWN= 5.0;    // seconds before same card can re-fire
 const BIRD_R       = 13;
@@ -417,8 +418,9 @@ function spawnBoss() {
   state.boss = {
     type, name:data.name, color:data.color,
     hp:data.hp*dm, maxHp:data.hp*dm,
-    x:W/2, y:90,
-    vx:0.8,
+    x:W/2, y:-80,
+    vx:0.8, vy:1.0,
+    entering:true,
     phase:0, phaseTimer:0,
     state:'idle',
     atkCooldown:2.5,
@@ -900,7 +902,10 @@ function updateBirds(dt) {
           ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
           ...state.enemies.filter(e => e.alive),
         ];
-        const inRange = allT.filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range);
+        const inRange = allT.filter(e => {
+          const r = (e === state.boss && state.bossActive) ? Math.max(sp.range, 220) : sp.range;
+          return dist(bird.x, bird.y, e.x, e.y) < r;
+        });
         if (inRange.length) target = inRange.reduce((best, e) =>
           dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
       }
@@ -1061,6 +1066,19 @@ function updateBoss(dt) {
   const boss  = state.boss;
   const alive = state.birds.filter(b => b.alive);
   if (!alive.length) return;
+
+  // Entry phase — boss descends from off-screen before engaging
+  if (boss.entering) {
+    boss.y += boss.vy * dt * 60;
+    boss.x += boss.vx * dt * 60;
+    if (boss.x < 70 || boss.x > W - 70) boss.vx *= -1;
+    if (boss.y >= BOSS_FIGHT_Y) {
+      boss.y = BOSS_FIGHT_Y;
+      boss.entering = false;
+      boss.vy = 0;
+    }
+    return;
+  }
 
   boss.flashTimer = Math.max(0, boss.flashTimer - dt);
   boss.x += boss.vx * dt * 60;
