@@ -952,7 +952,7 @@ function updateBirds(dt) {
         if (dEnd < 20 || bird.x < -40 || bird.x > W + 40 || bird.y < -40 || bird.y > H + 40) {
           bird.meleeState  = 'returning';
           bird.chargeHit   = [];
-          bird.atkCooldown = 3.5;
+          bird.atkCooldown = 1.6;
         }
 
       } else if (bird.meleeState === 'peeling') {
@@ -974,7 +974,14 @@ function updateBirds(dt) {
             if (bird.traits.includes('Hates Drones') && tgt.type === 'drone')   dmg *= 1.30;
             if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
             const isCrit = Math.random() < sp.critChance;
-            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+            if (isCrit) {
+              dmg *= 2;
+              spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!');
+              if (bird.species === 'danger_sparrow') {
+                const heal = sp.dmg * 0.4;
+                bird.hp = Math.min(bird.maxHp, bird.hp + heal);
+              }
+            }
             if (tgt === state.boss) {
               if (tgt.debuffed) dmg *= 1.12;
               tgt.hp -= dmg; tgt.flashTimer = 0.18;
