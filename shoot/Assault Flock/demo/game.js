@@ -30,12 +30,12 @@ const UNLOCK = {
 // ════════════════════════════════════════════════
 
 const SPECIES = {
-  danger_sparrow:   { label:'Danger Sparrow',    init:'DS', role:'Striker',     color:'#e06030', hp:65,  dmg:22, spd:1.5, range:110, atkRate:1.2, aggression:0.9 },
-  feathered_loiter: { label:'Feathered Loiterer',init:'FL', role:'Screen',      color:'#8aaa50', hp:42,  dmg:10, spd:1.3, range:80,  atkRate:0.8, aggression:0.3 },
-  goth_chicken:     { label:'Goth Chicken',      init:'GC', role:'Opportunist', color:'#9955dd', hp:82,  dmg:16, spd:1.1, range:90,  atkRate:1.0, aggression:0.5 },
-  angry_honker:     { label:'Angry Honker',      init:'AH', role:'Anchor',      color:'#d4860a', hp:130, dmg:13, spd:0.8, range:70,  atkRate:0.9, aggression:0.4 },
-  wise_old_bird:    { label:'Wise Old Bird',     init:'WB', role:'Specialist',  color:'#50a0cc', hp:72,  dmg:16, spd:1.1, range:130, atkRate:0.9, aggression:0.6 },
-  beach_screamer:   { label:'Beach Screamer',    init:'BS', role:'Medic',       color:'#40c0a0', hp:95,  dmg:9,  spd:1.2, range:65,  atkRate:0.7, aggression:0.2 },
+  danger_sparrow:   { label:'Danger Sparrow',    init:'DS', role:'Striker',     color:'#e06030', hp:65,  dmg:22, spd:1.5, range:110, atkRate:1.2, aggression:0.9, combatClass:'melee',  rangedType:null,       critChance:0.15, peelSpd:3.2 },
+  feathered_loiter: { label:'Feathered Loiterer',init:'FL', role:'Screen',      color:'#8aaa50', hp:42,  dmg:6,  spd:1.3, range:80,  atkRate:1.8, aggression:0.3, combatClass:'ranged', rangedType:'rapid',    critChance:0.10, peelSpd:0   },
+  goth_chicken:     { label:'Goth Chicken',      init:'GC', role:'Opportunist', color:'#9955dd', hp:82,  dmg:11, spd:1.9, range:90,  atkRate:1.0, aggression:0.5, combatClass:'melee',  rangedType:null,       critChance:0.28, peelSpd:3.0 },
+  angry_honker:     { label:'Angry Honker',      init:'AH', role:'Anchor',      color:'#d4860a', hp:130, dmg:38, spd:0.8, range:100, atkRate:0.3, aggression:0.4, combatClass:'melee',  rangedType:null,       critChance:0.10, peelSpd:2.8 },
+  wise_old_bird:    { label:'Wise Old Bird',     init:'WB', role:'Specialist',  color:'#50a0cc', hp:72,  dmg:30, spd:1.1, range:160, atkRate:0.45,aggression:0.6, combatClass:'ranged', rangedType:'sniper',   critChance:0.12, peelSpd:0   },
+  beach_screamer:   { label:'Beach Screamer',    init:'BS', role:'Medic',       color:'#40c0a0', hp:95,  dmg:9,  spd:1.2, range:65,  atkRate:0.7, aggression:0.2, combatClass:'ranged', rangedType:'triple',   critChance:0.10, peelSpd:0   },
 };
 
 const TRAITS = {
@@ -289,6 +289,12 @@ function buildRunFlock() {
       subflocked:   false,
       subflockTimer:0,
       updraftTimer: 0,
+      meleeState:   'idle',
+      meleeTarget:  null,
+      chargeDir:    { x: 0, y: -1 },
+      chargeEndX:   0,
+      chargeEndY:   0,
+      chargeHit:    [],
     };
   }).filter(Boolean);
 }
@@ -336,6 +342,7 @@ function initState(keepCards, keepFormation) {
     crosswindX:        0,
     crosswindTimer:    0,
     totalSlipstreamHealing: 0,
+    floatTexts:        [],
     currentLevel:      lvl,
     currentDifficulty: diff,
     diffMult:          diff === 'brutal' ? 1.5 : diff === 'hard' ? 1.2 : 1.0,
@@ -445,17 +452,48 @@ function dist(ax, ay, bx, by) {
   return Math.sqrt(dx*dx + dy*dy);
 }
 
-function fireProj(fromX, fromY, toX, toY, dmg, owner, color, debuffing) {
+function fireProj(fromX, fromY, toX, toY, dmg, owner, color, debuffing, rangedType) {
   const d    = dist(fromX, fromY, toX, toY) || 1;
-  const spd  = owner === 'bird' ? 5.5 : 3.8;
+  const baseSpd = rangedType === 'rapid' ? 6.5 : rangedType === 'sniper' ? 4.0 : owner === 'bird' ? 5.5 : 3.8;
   const cx   = state.crosswindTimer > 0 ? state.crosswindX * 0.5 : 0;
+  const trail = rangedType === 'sniper' ? [] : null;
   state.projectiles.push({
     id: ++state.projId,
     x: fromX, y: fromY,
-    vx: (toX - fromX) / d * spd + cx,
-    vy: (toY - fromY) / d * spd,
+    vx: (toX - fromX) / d * baseSpd + cx,
+    vy: (toY - fromY) / d * baseSpd,
     dmg, owner, color, alive:true,
     debuffing: !!debuffing,
+    rangedType: rangedType || null,
+    trail,
+  });
+}
+
+function spawnFloatText(x, y, text, color) {
+  state.floatTexts.push({
+    x, y,
+    text,
+    color: color || '#ffe060',
+    timer: 1.2,
+    maxTimer: 1.2,
+  });
+}
+
+function fireProjAngled(fromX, fromY, toX, toY, angleOffsetRad, dmg, owner, color, debuffing, rangedType) {
+  const d   = dist(fromX, fromY, toX, toY) || 1;
+  const baseAngle = Math.atan2(toY - fromY, toX - fromX);
+  const a   = baseAngle + angleOffsetRad;
+  const baseSpd = rangedType === 'rapid' ? 6.5 : rangedType === 'sniper' ? 4.0 : owner === 'bird' ? 5.5 : 3.8;
+  const cx  = state.crosswindTimer > 0 ? state.crosswindX * 0.5 : 0;
+  state.projectiles.push({
+    id: ++state.projId,
+    x: fromX, y: fromY,
+    vx: Math.cos(a) * baseSpd + cx,
+    vy: Math.sin(a) * baseSpd,
+    dmg, owner, color, alive:true,
+    debuffing: !!debuffing,
+    rangedType: rangedType || null,
+    trail: null,
   });
 }
 
@@ -870,69 +908,212 @@ function updateBirds(dt) {
       }
     }
 
-    // Move
-    let tx, ty;
-    if (bird.subflocked) {
-      const tgt = state.enemies.filter(e => e.alive).reduce((best, e) =>
-        dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best,
-        state.enemies.find(e => e.alive));
-      tx = tgt ? tgt.x : bird.x;
-      ty = tgt ? tgt.y : bird.y;
+    // ── Movement ─────────────────────────────────────────
+    if (sp.combatClass === 'melee' && bird.meleeState !== 'idle') {
+      // Melee override movement
+      const moveSpd = sp.peelSpd * (0.5 + bird.stamina / 200) * dt * 60;
+
+      if (bird.meleeState === 'charging') {
+        // Angry Honker straight-line charge
+        bird.x += bird.chargeDir.x * sp.peelSpd * dt * 60;
+        bird.y += bird.chargeDir.y * sp.peelSpd * dt * 60;
+
+        // Hit enemies along charge path
+        const allTargets = [
+          ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+          ...state.enemies.filter(e => e.alive),
+        ];
+        allTargets.forEach(tgt => {
+          if (bird.chargeHit.includes(tgt.id || tgt)) return;
+          if (dist(bird.x, bird.y, tgt.x, tgt.y) < 28 + (tgt === state.boss ? 30 : ENEMY_R)) {
+            bird.chargeHit.push(tgt.id || tgt);
+            let dmg = sp.dmg;
+            if (state.stance === 'aggressive')                                   dmg *= 1.30;
+            if (bird.traits.includes('Vengeful') && state.lostBirds.length > 0) dmg *= 1.20;
+            if (bird.traits.includes('Reckless'))                                dmg *= 1.10;
+            if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
+            const isCrit = Math.random() < sp.critChance;
+            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+            if (tgt === state.boss) {
+              if (tgt.debuffed) dmg *= 1.12;
+              tgt.hp -= dmg; tgt.flashTimer = 0.18;
+              state.score += 50;
+              if (tgt.hp <= 0) { tgt.alive = false; state.bossKilled = true; state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30); }
+            } else {
+              tgt.hp -= dmg * (tgt.debuffed ? 1.10 : 1.0); tgt.flashTimer = 0.18;
+              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); }
+            }
+            bird.flashTimer = 0.18;
+          }
+        });
+
+        // Reached end of charge line or left screen
+        const dEnd = dist(bird.x, bird.y, bird.chargeEndX, bird.chargeEndY);
+        if (dEnd < 20 || bird.x < -40 || bird.x > W + 40 || bird.y < -40 || bird.y > H + 40) {
+          bird.meleeState  = 'returning';
+          bird.chargeHit   = [];
+          bird.atkCooldown = 3.5;
+        }
+
+      } else if (bird.meleeState === 'peeling') {
+        // Single-target peel (DS, GC)
+        const tgt = bird.meleeTarget;
+        if (!tgt || !tgt.alive) {
+          bird.meleeState = 'returning';
+        } else {
+          const dTgt = dist(bird.x, bird.y, tgt.x, tgt.y);
+          const hitR  = (tgt === state.boss ? 30 : ENEMY_R) + 22;
+          if (dTgt <= hitR) {
+            // Land strike
+            let dmg = sp.dmg;
+            if (state.stance === 'aggressive')                                    dmg *= 1.30;
+            if (bird.species === 'goth_chicken' && tgt.hp < tgt.maxHp * 0.5)    dmg *= 1.40;
+            if (bird.species === 'goth_chicken' && tgt.debuffed)                 dmg *= 1.35;
+            if (bird.traits.includes('Vengeful') && state.lostBirds.length > 0) dmg *= 1.20;
+            if (bird.traits.includes('Reckless'))                                dmg *= 1.10;
+            if (bird.traits.includes('Hates Drones') && tgt.type === 'drone')   dmg *= 1.30;
+            if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
+            const isCrit = Math.random() < sp.critChance;
+            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+            if (tgt === state.boss) {
+              if (tgt.debuffed) dmg *= 1.12;
+              tgt.hp -= dmg; tgt.flashTimer = 0.18;
+              state.score += 50;
+              if (tgt.hp <= 0) { tgt.alive = false; state.bossKilled = true; state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30); }
+            } else {
+              tgt.hp -= dmg * (tgt.debuffed ? 1.10 : 1.0); tgt.flashTimer = 0.18;
+              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); }
+            }
+            bird.flashTimer  = 0.18;
+            bird.atkCooldown = (1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.3;
+            bird.meleeState  = 'returning';
+          } else {
+            bird.x += (tgt.x - bird.x) / dTgt * Math.min(dTgt, moveSpd);
+            bird.y += (tgt.y - bird.y) / dTgt * Math.min(dTgt, moveSpd);
+          }
+        }
+
+      } else if (bird.meleeState === 'returning') {
+        const dSlot = dist(bird.x, bird.y, bird.targetX, bird.targetY);
+        const retSpd = sp.spd * spdMult * (0.4 + bird.stamina / 160) * dt * 60;
+        if (dSlot < 20) {
+          bird.meleeState = 'idle';
+        } else {
+          bird.x += (bird.targetX - bird.x) / dSlot * Math.min(dSlot, retSpd);
+          bird.y += (bird.targetY - bird.y) / dSlot * Math.min(dSlot, retSpd);
+        }
+      }
+
     } else {
-      tx = bird.targetX + (Math.random() - 0.5) * jitter;
-      ty = bird.targetY + (Math.random() - 0.5) * jitter;
-    }
-    const d   = dist(bird.x, bird.y, tx, ty);
-    const spd = sp.spd * spdMult * (0.4 + bird.stamina / 160) * dt * 60;
-    if (d > 2) {
-      bird.x += (tx - bird.x) / d * Math.min(d, spd);
-      bird.y += (ty - bird.y) / d * Math.min(d, spd);
+      // Standard formation / subflocked movement
+      let tx, ty;
+      if (bird.subflocked) {
+        const tgt = state.enemies.filter(e => e.alive).reduce((best, e) =>
+          dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best,
+          state.enemies.find(e => e.alive));
+        tx = tgt ? tgt.x : bird.x;
+        ty = tgt ? tgt.y : bird.y;
+      } else {
+        tx = bird.targetX + (Math.random() - 0.5) * jitter;
+        ty = bird.targetY + (Math.random() - 0.5) * jitter;
+      }
+      const d   = dist(bird.x, bird.y, tx, ty);
+      const spd = sp.spd * spdMult * (0.4 + bird.stamina / 160) * dt * 60;
+      if (d > 2) {
+        bird.x += (tx - bird.x) / d * Math.min(d, spd);
+        bird.y += (ty - bird.y) / d * Math.min(d, spd);
+      }
     }
 
-    // Auto-attack
+    // ── Auto-attack / attack trigger ─────────────────────
     bird.atkCooldown -= dt;
-    if (bird.atkCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
-      // Select target
-      let target = null;
-      if (state.focusTarget && state.focusTarget.alive) {
-        target = state.focusTarget;
-      } else {
-        // Combine boss + enemies
+    if (sp.combatClass === 'melee') {
+      // Melee: trigger peel/charge when idle and cooldown ready
+      if (bird.meleeState === 'idle' && bird.atkCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
         const allT = [
           ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
           ...state.enemies.filter(e => e.alive),
         ];
-        const inRange = allT.filter(e => {
-          const r = (e === state.boss && state.bossActive) ? Math.max(sp.range, 220) : sp.range;
-          return dist(bird.x, bird.y, e.x, e.y) < r;
-        });
-        if (inRange.length) target = inRange.reduce((best, e) =>
-          dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
-      }
-
-      if (target) {
-        let dmg = sp.dmg;
-        if (state.stance === 'aggressive')                                    dmg *= 1.30;
-        if (bird.species === 'goth_chicken' && target.hp < target.maxHp*0.5) dmg *= 1.40;
-        if (bird.species === 'goth_chicken' && target.debuffed)               dmg *= 1.35;
-        if (bird.traits.includes('Vengeful') && state.lostBirds.length > 0)  dmg *= 1.20;
-        if (bird.traits.includes('Reckless'))                                 dmg *= 1.10;
-        if (bird.traits.includes('Hates Drones') && target.type === 'drone') dmg *= 1.30;
-        if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
-
-        let projColor   = '#a0e060';
-        let isDebuffing = false;
-        if (bird.debuffApplied && bird.species === 'danger_sparrow') {
-          isDebuffing       = true;
-          bird.debuffApplied = false;
-          projColor          = '#50a0cc';
-          dmg *= 1.15;
+        const inRange = allT.filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range);
+        if (inRange.length) {
+          const nearest = inRange.reduce((best, e) =>
+            dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
+          if (bird.species === 'angry_honker') {
+            // Charge attack
+            const dx = nearest.x - bird.x, dy = nearest.y - bird.y;
+            const dN = Math.sqrt(dx*dx + dy*dy) || 1;
+            bird.chargeDir  = { x: dx / dN, y: dy / dN };
+            bird.chargeEndX = bird.x + bird.chargeDir.x * 280;
+            bird.chargeEndY = bird.y + bird.chargeDir.y * 280;
+            bird.chargeHit  = [];
+            bird.meleeState = 'charging';
+          } else {
+            // Peel attack
+            bird.meleeTarget = nearest;
+            bird.meleeState  = 'peeling';
+          }
+        } else {
+          bird.atkCooldown = 0.4;
         }
-        fireProj(bird.x, bird.y, target.x, target.y, dmg, 'bird', projColor, isDebuffing);
-        bird.flashTimer  = 0.12;
-        bird.atkCooldown = (1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.25;
-      } else {
-        bird.atkCooldown = 0.4;
+      }
+    } else {
+      // Ranged attack
+      if (bird.atkCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
+        let target = null;
+        if (state.focusTarget && state.focusTarget.alive) {
+          target = state.focusTarget;
+        } else {
+          const allT = [
+            ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+            ...state.enemies.filter(e => e.alive),
+          ];
+          const inRange = allT.filter(e => {
+            const r = (e === state.boss && state.bossActive) ? Math.max(sp.range, 220) : sp.range;
+            return dist(bird.x, bird.y, e.x, e.y) < r;
+          });
+          if (inRange.length) target = inRange.reduce((best, e) =>
+            dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
+        }
+
+        if (target) {
+          let dmg = sp.dmg;
+          if (state.stance === 'aggressive')                                    dmg *= 1.30;
+          if (bird.traits.includes('Vengeful') && state.lostBirds.length > 0)  dmg *= 1.20;
+          if (bird.traits.includes('Reckless'))                                 dmg *= 1.10;
+          if (bird.traits.includes('Hates Drones') && target.type === 'drone') dmg *= 1.30;
+          if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
+
+          let projColor   = sp.rangedType === 'rapid'  ? '#c8ff60'
+                          : sp.rangedType === 'sniper' ? '#c0e8ff'
+                          : sp.rangedType === 'triple' ? sp.color
+                          : '#a0e060';
+          let isDebuffing = false;
+          if (bird.debuffApplied && bird.species === 'danger_sparrow') {
+            isDebuffing        = true;
+            bird.debuffApplied = false;
+            projColor          = '#50a0cc';
+            dmg *= 1.15;
+          }
+
+          if (sp.rangedType === 'triple') {
+            // Beach Screamer: 3 fanned shots, each rolls for crit independently
+            [-0.21, 0, 0.21].forEach(angleOff => {
+              let shotDmg = dmg;
+              const isCrit = Math.random() < sp.critChance;
+              if (isCrit) { shotDmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+              fireProjAngled(bird.x, bird.y, target.x, target.y, angleOff, shotDmg, 'bird', projColor, isDebuffing, sp.rangedType);
+            });
+          } else {
+            const isCrit = Math.random() < sp.critChance;
+            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+            fireProj(bird.x, bird.y, target.x, target.y, dmg, 'bird', projColor, isDebuffing, sp.rangedType);
+          }
+
+          bird.flashTimer  = 0.12;
+          bird.atkCooldown = (1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.25;
+        } else {
+          bird.atkCooldown = 0.4;
+        }
       }
     }
 
@@ -1262,6 +1443,15 @@ function updateProjectiles(dt) {
 }
 
 // ════════════════════════════════════════════════
+// UPDATE — FLOAT TEXTS
+// ════════════════════════════════════════════════
+
+function updateFloatTexts(dt) {
+  state.floatTexts.forEach(ft => { ft.timer -= dt; ft.y -= 28 * dt; });
+  state.floatTexts = state.floatTexts.filter(ft => ft.timer > 0);
+}
+
+// ════════════════════════════════════════════════
 // UPDATE — SPAWNER
 // ════════════════════════════════════════════════
 
@@ -1364,6 +1554,7 @@ function update(dt) {
   updateBoss(dt);
   updateProjectiles(dt);
   updateHazards(dt);
+  updateFloatTexts(dt);
   updateCamera();
 
   state.score += 8 * dt;
@@ -1407,6 +1598,7 @@ function render() {
   drawEnemies();
   drawBoss();
   drawBirds();
+  drawFloatTexts();
   if (state.isReorganizing) drawReorgOverlay();
 
   ctx.restore();
@@ -1543,6 +1735,35 @@ function drawBirds() {
       ctx.strokeStyle='rgba(255,200,50,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([3,4]);
       ctx.beginPath(); ctx.arc(bird.x,bird.y,BIRD_R+5,0,Math.PI*2); ctx.stroke();
       ctx.setLineDash([]);
+    }
+
+    // Melee state indicators
+    if (sp.combatClass === 'melee') {
+      if (bird.meleeState === 'charging') {
+        // Honker charge trail: 3 ghost circles behind direction of travel
+        for (let g = 1; g <= 3; g++) {
+          const gx = bird.x - bird.chargeDir.x * g * 10;
+          const gy = bird.y - bird.chargeDir.y * g * 10;
+          ctx.globalAlpha = 0.28 / g;
+          ctx.fillStyle = sp.color;
+          ctx.beginPath(); ctx.arc(gx, gy, BIRD_R, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        // Charge direction indicator
+        ctx.strokeStyle = `rgba(${hexToRgb(sp.color)},0.55)`; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bird.x, bird.y);
+        ctx.lineTo(bird.chargeEndX, bird.chargeEndY);
+        ctx.stroke();
+      } else if (bird.meleeState === 'peeling' && bird.meleeTarget?.alive) {
+        // Thin line from peeling bird to its target
+        ctx.strokeStyle = `rgba(${hexToRgb(sp.color)},0.30)`; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.moveTo(bird.x, bird.y);
+        ctx.lineTo(bird.meleeTarget.x, bird.meleeTarget.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
 
     // Attack flash
@@ -1706,9 +1927,42 @@ function drawBossBar() {
 function drawProjectiles() {
   state.projectiles.forEach(p => {
     if (!p.alive) return;
-    ctx.shadowColor=p.color; ctx.shadowBlur=5;
-    ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,PROJ_R,0,Math.PI*2); ctx.fill();
-    ctx.shadowBlur=0;
+    const r = p.rangedType === 'rapid'  ? 2
+            : p.rangedType === 'sniper' ? 5
+            : PROJ_R;
+
+    // Sniper trail
+    if (p.rangedType === 'sniper' && p.trail !== null) {
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > 4) p.trail.shift();
+      p.trail.forEach((pt, i) => {
+        const a = (i / p.trail.length) * 0.35;
+        ctx.fillStyle = `rgba(192,232,255,${a})`;
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, r * 0.6, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = p.rangedType === 'sniper' ? 10 : p.rangedType === 'rapid' ? 3 : 5;
+    ctx.fillStyle   = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur  = 0;
+  });
+}
+
+function drawFloatTexts() {
+  state.floatTexts.forEach(ft => {
+    const alpha = Math.min(1, ft.timer / (ft.maxTimer * 0.4)) * Math.min(1, ft.timer / ft.maxTimer * 3);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = ft.color;
+    ctx.shadowBlur  = 6;
+    ctx.fillStyle   = ft.color;
+    ctx.font        = 'bold 11px Courier New';
+    ctx.textAlign   = 'center';
+    ctx.textBaseline= 'middle';
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.restore();
   });
 }
 
@@ -1844,13 +2098,23 @@ function buildRosterList() {
     const card= document.createElement('div');
     card.className='bird-card';
     const traitsStr = bird.traits.length?' · '+bird.traits.join(', '):'';
+    const combatLabel = sp.combatClass === 'melee'
+      ? (bird.species === 'angry_honker' ? 'CHARGE' : 'MELEE')
+      : sp.rangedType === 'rapid'  ? 'RAPID'
+      : sp.rangedType === 'sniper' ? 'SNIPER'
+      : sp.rangedType === 'triple' ? 'TRIPLE'
+      : 'RANGED';
+    const combatColor = sp.combatClass === 'melee' ? '#e06030' : '#40c0a0';
     card.innerHTML=`
       <div class="bird-badge" style="background:${sp.color}20; border-color:${sp.color}55;"><span style="color:${sp.color};">${sp.init}</span></div>
       <div class="bird-info">
         <div class="bird-name">${bird.name}</div>
         <div class="bird-species">${sp.label}${traitsStr}</div>
       </div>
-      <span class="bird-role" style="color:${sp.color}; border-color:${sp.color}55;">${sp.role}</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+        <span class="bird-role" style="color:${sp.color}; border-color:${sp.color}55;">${sp.role}</span>
+        <span style="font-size:9px;font-family:'Courier New',monospace;color:${combatColor};border:1px solid ${combatColor}55;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;">${combatLabel}</span>
+      </div>
       <div class="bird-stats"><span>HP ${sp.hp}</span><span>DMG ${sp.dmg}</span></div>
     `;
     container.appendChild(card);

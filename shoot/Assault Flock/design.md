@@ -93,14 +93,14 @@
 
 - **Species (6 at launch)**
 
-  | Species | Role | Strengths | Weaknesses | Notes |
-  |---------|------|-----------|------------|-------|
-  | **Danger Sparrow** | Striker | High damage, high speed, dive attack specialist | Fragile, expensive to recruit | Primary damage dealer. Excels at priority target deletion. |
-  | **Feathered Loiterer** | Filler / Screen | Cheap, plentiful, fast to recruit | Low stats across the board | Expendable. Ideal for sacrificial screens, risky escort roles, or padding out formations cheaply. |
-  | **Goth Chicken** | Opportunist | Balanced stats, bonus damage to wounded targets | No standout strength in any single area | Flexible generalist. Becomes deadly when paired with debuffers or after initial strikes soften targets. |
-  | **Angry Honker** | Anchor / Tank | High toughness, aura buffs, formation backbone | Slow, low agility | Central to formation stability. Losing an Angry Honker destabilizes nearby birds. |
-  | **Wise Old Bird** | Specialist | Stealth, ambush attacks, debuffs, high awareness | Low stamina, poor sustained combat | Best used for hit-and-run debuff application. Fragile if exposed. |
-  | **Beach Screamer** | Harasser / Medic | Healing bursts, ranged harassment, medium survivability | Low damage output | Support role. Keeps the flock alive but contributes little to kills directly. |
+  | Species | Role | Combat Class | Strengths | Weaknesses | Notes |
+  |---------|------|--------------|-----------|------------|-------|
+  | **Danger Sparrow** | Striker | Melee — Peel | High damage, mid speed, dive attack specialist | Fragile, expensive to recruit | All-rounder melee striker. Peels off to engage single targets, returns to slot. |
+  | **Feathered Loiterer** | Filler / Screen | Ranged — Rapid | Cheap, high fire rate, plentiful | Very low per-shot damage | Expendable. Sprays rapid fire from formation; competitive DPS through volume. |
+  | **Goth Chicken** | Opportunist | Melee — Peel | High speed peel, elevated crit chance, bonus damage to wounded | Low hit damage without a crit | Crit fisher. Fast in-and-out strikes — underwhelming on average hits, terrifying on crits. |
+  | **Angry Honker** | Anchor / Tank | Melee — Charge | High toughness, aura buffs, devastating charge attack | Slow, long cooldown between charges | Charges in a straight line through multiple enemies. Stays in formation otherwise as the formation backbone. |
+  | **Wise Old Bird** | Specialist | Ranged — Sniper | Very high single-shot damage, debuffs, long range | Low fire rate, poor sustained combat | Slow, punishing shots from range. Best used to pick off high-value targets. |
+  | **Beach Screamer** | Harasser / Medic | Ranged — Triple | Healing bursts, fires 3 simultaneous shots per volley | Low individual shot damage | Triple spread shot covers area and stacks crit rolls. Support role with surprising burst output. |
 
 - **Species name mapping** (in-game name → real species, for reference)
   | In-game name | Real species |
@@ -547,3 +547,92 @@
   - Hall of Feathers.
   - Sub-flock detachment.
   - Mobile and Steam builds.
+
+---
+
+### 18. Combat classes & crit system
+
+#### 18.1 Combat class overview
+
+Every bird species belongs to one of two combat classes: **Melee** or **Ranged**. The class determines how the bird attacks during a run — melee birds leave formation to engage enemies directly, ranged birds stay in position and fire projectiles.
+
+| Species | Combat Class | Subtype |
+|---------|-------------|---------|
+| Danger Sparrow | Melee | Peel |
+| Goth Chicken | Melee | Peel |
+| Angry Honker | Melee | Charge |
+| Feathered Loiterer | Ranged | Rapid |
+| Beach Screamer | Ranged | Triple |
+| Wise Old Bird | Ranged | Sniper |
+
+#### 18.2 Melee — peel attack (Danger Sparrow, Goth Chicken)
+
+Peel-type melee birds leave their formation slot to strike a single target, then immediately return.
+
+**State loop:**
+1. **Idle** — bird holds its formation slot and waits for attack cooldown to expire.
+2. **Peeling** — when cooldown expires and an enemy is within range, the bird locks onto the nearest enemy and moves directly toward it at elevated speed (breaking formation). Formation shelter bonuses do not apply during this state.
+3. **Striking** — on contact (~22 px from enemy center), the bird deals its melee damage, applies a crit roll, and flashes the target. Attack cooldown resets.
+4. **Returning** — bird moves back toward its assigned formation slot at normal speed. Once it reaches the slot (~20 px), it returns to Idle.
+
+**Species differences:**
+- **Danger Sparrow**: mid speed, mid damage. The reliable all-rounder — consistent threat delivery with acceptable crit upside.
+- **Goth Chicken**: high peel speed (visibly fast), low base damage, significantly elevated crit chance (28%). Plays as a crit fisher — underwhelming on regular hits, devastating on crits. Pairs well with debuffers that extend the window in which Goth Chicken's bonus damage to wounded targets applies.
+
+#### 18.3 Melee — charge attack (Angry Honker)
+
+The Angry Honker does not target a single enemy. Instead it launches a **straight-line charge** through the battlefield, hitting every enemy in its path.
+
+**Charge behavior:**
+1. **Idle** — holds formation slot, waiting for cooldown.
+2. **Charging** — when cooldown expires, the Honker locks a direction vector toward the nearest enemy and begins charging at `spd × 3.5`. It travels ~280 px in a straight line regardless of where enemies move. Every enemy within ~28 px of the Honker's position during the charge takes full damage and a crit roll. Each enemy is hit at most once per charge. A short motion-blur trail (3 ghost circles) renders behind the Honker while charging.
+3. **Returning** — at the end of the charge line (or screen boundary), the Honker returns to its formation slot. Long cooldown (~3.5 s) balances the multi-hit potential.
+
+**Design intent:** The Angry Honker is the formation's anchor — it stays put most of the time, aura-buffing nearby birds. When its charge cooldown fires, it erupts through the enemy line, then returns to anchor duty. The charge rewards positioning: launching a Honker through a dense cluster or alongside the path of a boss sweep can hit 3–5 targets. Launching it into empty space is wasted.
+
+#### 18.4 Ranged subtypes
+
+Ranged birds remain in formation and fire projectiles. Three subtypes vary in fire pattern, projectile visuals, and stat profile.
+
+**Rapid (Feathered Loiterer)**
+- High fire rate, low per-shot damage. Competitive damage-per-second through volume.
+- Small fast projectiles (radius 2 px, lime green). The screen fills with tiny shots at peak density.
+- Best against high-HP enemies where sustained output matters more than burst.
+
+**Triple (Beach Screamer)**
+- Fires 3 projectiles simultaneously per volley in a ±12° fan around the target bearing.
+- Each projectile rolls for crits independently — one volley can produce multiple "Cra Caw!" events.
+- Low-to-mid fire rate. Burst output is deceptively high in close-range engagements where all 3 shots connect.
+
+**Sniper (Wise Old Bird)**
+- Very slow fire rate, very high single-shot damage.
+- Large bright projectile (radius 5 px, white-blue) with a short trailing blur. Hard to miss visually — telegraphs power.
+- Best against bosses, high-toughness elites, and debuffed targets (pairs naturally with Wise Old Bird's own debuff application).
+
+#### 18.5 Crit system
+
+All attacks — melee strikes and individual ranged projectiles — have a per-species chance to critically hit.
+
+**Mechanics:**
+- On every damage instance, a random roll is checked against the bird's `critChance` value.
+- A critical hit deals **2× the calculated damage** (after all other multipliers).
+- Each projectile in a Beach Screamer triple volley rolls independently.
+- Each enemy hit during an Angry Honker charge rolls independently.
+
+**Visual feedback:**
+- On any critical hit, the **attacking bird** displays a floating "Cra Caw!" text label that drifts upward and fades over ~1.2 seconds.
+- The text appears at the bird's position, not the target — it is a reaction from the attacker, not a damage number.
+- Color: bright yellow-gold. Stands out against all level palettes.
+
+**Base crit chances by species:**
+
+| Species | Base crit chance |
+|---------|----------------|
+| Danger Sparrow | 15% |
+| Goth Chicken | 28% |
+| Angry Honker | 10% |
+| Feathered Loiterer | 10% |
+| Beach Screamer | 10% |
+| Wise Old Bird | 12% |
+
+The Vengeful trait (damage boost after ally death) stacks with crits multiplicatively — a Vengeful crit from a Goth Chicken after losing an anchor is one of the highest single-hit damage events available in the base game.
