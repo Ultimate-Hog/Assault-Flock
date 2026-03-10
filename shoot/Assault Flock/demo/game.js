@@ -2181,9 +2181,22 @@ function drawBirds() {
       const sz = BIRD_R * 2 + 6;
       ctx.drawImage(sprite, bird.x - sz / 2, bird.y - sz / 2, sz, sz);
     } else {
+      const angle = (bird.meleeState === 'charging' && bird.chargeDir)
+        ? Math.atan2(bird.chargeDir.y, bird.chargeDir.x) + Math.PI / 2
+        : 0;
+      ctx.save();
+      ctx.translate(bird.x, bird.y);
+      ctx.rotate(angle);
       ctx.fillStyle = sp.color;
-      ctx.beginPath(); ctx.arc(bird.x, bird.y, BIRD_R, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0, -BIRD_R);
+      ctx.lineTo(BIRD_R, BIRD_R * 0.6);
+      ctx.lineTo(0, BIRD_R * 0.1);
+      ctx.lineTo(-BIRD_R, BIRD_R * 0.6);
+      ctx.closePath();
+      ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.20)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.restore();
     }
 
     // HP bar
