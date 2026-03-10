@@ -12,10 +12,11 @@ const BOSS_TRIGGER = 65;     // seconds until boss spawns
 const BOSS_FIGHT_Y = 300;   // px — boss parks here after entering from off-screen
 const SIM_TICK     = 0.15;   // call card evaluation interval (s)
 const CARD_COOLDOWN= 5.0;    // seconds before same card can re-fire
-const BIRD_R       = 13;
-const ENEMY_R      = 11;
-const PROJ_R       = 3;
-const BIRD_ICON    = '^';    // Central icon used for all bird canvas/UI visuals
+const BIRD_R            = 13;
+const ENEMY_R           = 11;
+const PROJ_R            = 3;
+const BIRD_ICON         = '^';    // Central icon used for all bird canvas/UI visuals
+const MELEE_RANGE_MULT  = 1.35;   // Global melee engagement radius multiplier
 
 const UNLOCK = {
   SPREAD_LINE:    100,
@@ -1079,6 +1080,38 @@ function killBird(b) {
   processDeathInheritance(b);
 }
 
+function checkKamikazeTrigger(bird) {
+  if (bird.species !== 'danger_sparrow') return;
+  if (bird.meleeState === 'kamikaze') return;
+  if (bird.hp > 0 && bird.hp / bird.maxHp < 0.10) {
+    bird.meleeState    = 'kamikaze';
+    bird.kamikazeTrail = [];
+    spawnFloatText(bird.x, bird.y - 28, 'Kamikaze!', '#ff2020', 14);
+  }
+}
+
+function kamikazeExplode(bird) {
+  const KAZE_RADIUS = 65;
+  const sp = bird.liveSp || SPECIES[bird.species];
+  const targets = [
+    ...(state.boss?.alive ? [state.boss] : []),
+    ...state.enemies.filter(e => e.alive),
+  ].filter(e => dist(bird.x, bird.y, e.x, e.y) < KAZE_RADIUS);
+  targets.forEach(e => {
+    e.hp -= sp.dmg * 2.5; e.flashTimer = 0.3;
+    if (e.hp <= 0) {
+      if (e === state.boss) {
+        e.alive = false; state.bossKilled = true;
+        state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30);
+      } else {
+        e.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4);
+      }
+    }
+  });
+  spawnFloatText(bird.x, bird.y, 'BOOM', '#ff4400', 18);
+  killBird(bird);
+}
+
 function removeBird(id) {
   profile.roster        = profile.roster.filter(b => b.id !== id);
   profile.activeRoster  = profile.activeRoster.filter(rid => rid !== id);
@@ -1170,7 +1203,30 @@ function updateBirds(dt) {
       // Melee override movement
       const moveSpd = sp.peelSpd * (0.5 + bird.stamina / 200) * dt * 60;
 
-      if (bird.meleeState === 'charging') {
+      if (bird.meleeState === 'kamikaze') {
+        // Death Charge — Striker flies at max speed into nearest enemy and explodes
+        bird.kamikazeTrail = bird.kamikazeTrail || [];
+        bird.kamikazeTrail.push({ x: bird.x, y: bird.y, t: 0.4 });
+        bird.kamikazeTrail = bird.kamikazeTrail.filter(p => { p.t -= dt; return p.t > 0; });
+
+        const kazeTargets = [
+          ...(state.boss?.alive ? [state.boss] : []),
+          ...state.enemies.filter(e => e.alive),
+        ].sort((a, b) => dist(bird.x, bird.y, a.x, a.y) - dist(bird.x, bird.y, b.x, b.y));
+
+        if (!kazeTargets.length) { killBird(bird); }
+        else {
+          const kTgt = kazeTargets[0];
+          const dK   = dist(bird.x, bird.y, kTgt.x, kTgt.y);
+          const spdK = sp.peelSpd * 2.0 * dt * 60;
+          bird.x += (kTgt.x - bird.x) / dK * Math.min(dK, spdK);
+          bird.y += (kTgt.y - bird.y) / dK * Math.min(dK, spdK);
+          if (dK < 22 || bird.x < -40 || bird.x > W + 40 || bird.y < -40 || bird.y > H + 40) {
+            kamikazeExplode(bird);
+          }
+        }
+
+      } else if (bird.meleeState === 'charging') {
         // Angry Honker straight-line charge
         bird.x += bird.chargeDir.x * sp.peelSpd * dt * 60;
         bird.y += bird.chargeDir.y * sp.peelSpd * dt * 60;
@@ -1190,7 +1246,7 @@ function updateBirds(dt) {
             if (bird.traits.includes('Reckless'))                                dmg *= 1.10;
             if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
             const isCrit = Math.random() < sp.critChance;
-            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); state.morale = Math.min(100, state.morale + 2); }
             if (tgt === state.boss) {
               if (tgt.debuffed) dmg *= 1.12;
               tgt.hp -= dmg; tgt.flashTimer = 0.18;
@@ -1237,9 +1293,18 @@ function updateBirds(dt) {
             if (isCrit) {
               dmg *= 2;
               spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!');
+              state.morale = Math.min(100, state.morale + 2);
               if (bird.species === 'danger_sparrow') {
                 const heal = sp.dmg * 0.4;
-                bird.hp = Math.min(bird.maxHp, bird.hp + heal);
+                if (Math.random() < 0.55) {
+                  // Flock heal AoE
+                  state.birds.filter(b => b.alive).forEach(b => {
+                    b.hp = Math.min(b.maxHp, b.hp + heal * 0.6);
+                    spawnFloatText(b.x, b.y - 18, '+Heal', '#40ffa0', 11);
+                  });
+                } else {
+                  bird.hp = Math.min(bird.maxHp, bird.hp + heal);
+                }
               }
             }
             if (tgt === state.boss) {
@@ -1260,8 +1325,37 @@ function updateBirds(dt) {
             if (bird.meleeTarget && bird.meleeTarget.alive) {
               // Target survived the hit — keep peeling
             } else {
-              bird.meleeTarget = null;
-              bird.meleeState  = 'returning';
+              // Target is dead — check Goth Chicken chain charge
+              if (bird.species === 'goth_chicken' &&
+                  bird.x >= -40 && bird.x <= W + 40 &&
+                  bird.y >= -40 && bird.y <= H + 40) {
+                bird.chainCount = (bird.chainCount || 0) + 1;
+                const chainChance = 0.15 + (sp.spd * 0.18);
+                if (bird.chainCount <= 3 && Math.random() < chainChance) {
+                  const chainPool = [
+                    ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+                    ...state.enemies.filter(e => e.alive),
+                  ].sort((a, b) =>
+                    dist(bird.x, bird.y, a.x, a.y) - dist(bird.x, bird.y, b.x, b.y));
+                  if (chainPool.length) {
+                    bird.meleeTarget = chainPool[0];
+                    bird.meleeState  = 'peeling';
+                    spawnFloatText(bird.x, bird.y - 28, 'Chain!', '#cc44ff', 14);
+                  } else {
+                    bird.chainCount  = 0;
+                    bird.meleeTarget = null;
+                    bird.meleeState  = 'returning';
+                  }
+                } else {
+                  bird.chainCount  = 0;
+                  bird.meleeTarget = null;
+                  bird.meleeState  = 'returning';
+                }
+              } else {
+                bird.chainCount  = 0;
+                bird.meleeTarget = null;
+                bird.meleeState  = 'returning';
+              }
             }
           } else {
             bird.x += (tgt.x - bird.x) / dTgt * Math.min(dTgt, moveSpd);
@@ -1274,7 +1368,7 @@ function updateBirds(dt) {
           const reEngagePool = [
             ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
             ...state.enemies.filter(e => e.alive),
-          ].filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range);
+          ].filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range * MELEE_RANGE_MULT);
           if (reEngagePool.length) {
             bird.meleeTarget = reEngagePool.reduce((best, e) =>
               dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
@@ -1323,7 +1417,7 @@ function updateBirds(dt) {
           ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
           ...state.enemies.filter(e => e.alive),
         ];
-        const inRange = allT.filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range);
+        const inRange = allT.filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range * MELEE_RANGE_MULT);
         if (inRange.length) {
           const nearest = inRange.reduce((best, e) =>
             dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
@@ -1389,12 +1483,12 @@ function updateBirds(dt) {
             [-0.21, 0, 0.21].forEach(angleOff => {
               let shotDmg = dmg;
               const isCrit = Math.random() < sp.critChance;
-              if (isCrit) { shotDmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+              if (isCrit) { shotDmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); state.morale = Math.min(100, state.morale + 2); }
               fireProjAngled(bird.x, bird.y, target.x, target.y, angleOff, shotDmg, 'bird', projColor, isDebuffing, sp.rangedType, bird);
             });
           } else {
             const isCrit = Math.random() < sp.critChance;
-            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
+            if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); state.morale = Math.min(100, state.morale + 2); }
             fireProj(bird.x, bird.y, target.x, target.y, dmg, 'bird', projColor, isDebuffing, sp.rangedType, bird);
           }
 
@@ -1484,7 +1578,7 @@ function updateEnemies(dt) {
               if (state.formation === 'tight_cluster') dmg *= 1.5;
               if (state.stance === 'evasive')          dmg *= 0.78;
               b.hp -= dmg; b.flashTimer = 0.25;
-              if (b.hp <= 0) killBird(b);
+              if (b.hp <= 0) killBird(b); else checkKamikazeTrigger(b);
             }
           });
           e.state = 'cooldown';
@@ -1512,7 +1606,7 @@ function updateEnemies(dt) {
             let dmg = 45;
             if (state.stance === 'evasive') dmg *= 0.78;
             target.hp -= dmg; target.flashTimer = 0.25;
-            if (target.hp <= 0) killBird(target);
+            if (target.hp <= 0) killBird(target); else checkKamikazeTrigger(target);
           }
           e.state = 'cooldown'; e.atkCooldown = 3.5 + Math.random() * 1.5; e.targetBirdId = null;
         }
@@ -1570,7 +1664,7 @@ function updateBoss(dt) {
             let dmg = 40;
             if (state.formation === 'loose_swarm') dmg *= 0.55;
             b.hp -= dmg; b.flashTimer = 0.25;
-            if (b.hp <= 0) killBird(b);
+            if (b.hp <= 0) killBird(b); else checkKamikazeTrigger(b);
           }
         });
         boss.state = 'cooldown'; boss.sweepRadius = 0; boss.atkCooldown = 5.0;
@@ -1643,7 +1737,7 @@ function updateBoss(dt) {
           let dmg = 60;
           if (state.stance === 'evasive') dmg *= 0.78;
           target.hp -= dmg; target.flashTimer = 0.3;
-          if (target.hp <= 0) killBird(target);
+          if (target.hp <= 0) killBird(target); else checkKamikazeTrigger(target);
         }
         boss.state = 'cooldown'; boss.atkCooldown = 4.0; boss.laserTargetId = null;
       }
@@ -1726,7 +1820,7 @@ function updateProjectiles(dt) {
 
           b.hp -= dmg; b.flashTimer = 0.2; p.alive = false;
           awardBirdXP(b, p.dmg * 0.1);
-          if (b.hp <= 0) killBird(b);
+          if (b.hp <= 0) killBird(b); else checkKamikazeTrigger(b);
           break;
         }
       }
@@ -2125,6 +2219,19 @@ function drawBirds() {
       ctx.strokeStyle='rgba(255,200,50,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([3,4]);
       ctx.beginPath(); ctx.arc(bird.x,bird.y,BIRD_R+5,0,Math.PI*2); ctx.stroke();
       ctx.setLineDash([]);
+    }
+
+    // Kamikaze red trail
+    if (bird.meleeState === 'kamikaze' && bird.kamikazeTrail?.length) {
+      bird.kamikazeTrail.forEach(p => {
+        ctx.globalAlpha = (p.t / 0.4) * 0.6;
+        ctx.fillStyle   = '#ff2020';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      // Red aura pulse on the bird itself
+      ctx.fillStyle = 'rgba(255,32,32,0.35)';
+      ctx.beginPath(); ctx.arc(bird.x, bird.y, BIRD_R + 8, 0, Math.PI * 2); ctx.fill();
     }
 
     // Melee state indicators

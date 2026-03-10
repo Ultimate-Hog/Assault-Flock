@@ -384,6 +384,30 @@ On level-up, the bird emits a gold "LEVEL UP!" floating text label (larger than 
   - Level-specific: turbine blades (Turbine Gorge), solar panel glare zones (Solar Canopy), updrafts, toxin clouds, net traps.
   - These are not enemies but affect movement, stamina, and formation stability. Some can be exploited (updrafts restore stamina, glare zones blind enemies too).
 
+#### 9.1 Special Combat Behaviors
+
+- **Goth Chicken — Chain Charge**
+  - On an enemy kill during a peel attack, roll `0.15 + (Spd × 0.18)` for a chain opportunity.
+  - On success (maximum 3 consecutive chains), the bird immediately re-targets the nearest living enemy rather than returning to formation.
+  - Visual: purple "Chain!" float text appears on each successful chain trigger.
+  - Balancing lever: the 3-chain cap prevents infinite wave clears; the `Spd` multiplier means natural stat growth from levelling improves chaining without requiring a separate upgrade path.
+
+- **Danger Sparrow — Flock Heal**
+  - On a critical hit, 55% chance to convert the standard self-heal into an AoE burst that heals all living flock members for 60% of the base heal value.
+  - Remaining 45%: the standard single-target self-heal fires instead.
+  - Visual: green "+Heal" float text appears on each healed bird.
+
+- **Critical Hit → Morale Boost**
+  - Any critical hit by any species grants +2 morale to the global flock pool (capped at 100).
+  - Stacks with existing kill-based morale gains; provides a sustained morale floor for aggressive high-crit builds and rewards momentum play.
+
+- **Striker Kamikaze Protocol**
+  - Applies to: Danger Sparrow (role: Striker).
+  - Trigger: HP drops below 10% of max HP from any damage source.
+  - Behavior: the bird abandons formation positioning and call card control, enters `kamikaze` state, and charges at maximum speed (peelSpd × 2) toward the nearest enemy.
+  - On contact or on exiting screen bounds: triggers a 65 px radius explosion dealing 2.5× the bird's base damage to all enemies caught in the blast, then the bird dies permanently.
+  - Visual: red "Kamikaze!" float text on trigger, red fading particle trail during the charge, orange "BOOM" float text on explosion.
+
 ---
 
 ### 10. Progression & meta-game
