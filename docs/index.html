@@ -17,8 +17,9 @@
         <h1 class="game-title">ASSAULT FLOCK</h1>
         <div class="hub-currencies">
           <span class="currency-pill"><span class="cur-label">XP</span><span id="cur-xp">0</span></span>
-          <span class="currency-pill amber"><span class="cur-label">SCRAP</span><span id="cur-scrap">150</span></span>
+          <span class="currency-pill amber"><span class="cur-label">SEED</span><span id="cur-seed">150</span></span>
           <span class="currency-pill plume"><span class="cur-label">PLUMES</span><span id="cur-plumes">0</span></span>
+          <button id="howto-btn" class="howto-trigger-btn" title="How to Play">?</button>
         </div>
       </div>
       <p class="hub-subtitle">AVIARY HQ — CONFIGURE YOUR FLOCK</p>
@@ -30,6 +31,7 @@
       <button class="hub-tab" data-tab="cards">CALL CARDS</button>
       <button class="hub-tab" data-tab="nest">NEST</button>
       <button class="hub-tab" data-tab="hall">HALL OF FEATHERS</button>
+      <button class="hub-tab" data-tab="glossary">GLOSSARY</button>
     </nav>
 
     <!-- ROSTER TAB -->
@@ -77,11 +79,20 @@
         <div class="nest-header">
           <p class="config-hint">Recruit new birds to your flock. As veterans fall in combat, their legacy enriches the pool — future recruits grow subtly stronger.</p>
           <div class="nest-refresh-row">
-            <button id="refresh-pool-btn" class="secondary-small-btn">REFRESH POOL <span id="refresh-cost">(50 SCRAP)</span></button>
+            <button id="refresh-pool-btn" class="secondary-small-btn">REFRESH POOL <span id="refresh-cost">(50 SEED)</span></button>
             <span class="nest-roster-count">Roster: <span id="nest-roster-count">8</span> / 12</span>
           </div>
         </div>
         <div id="nest-pool" class="nest-pool-grid"></div>
+      </div>
+    </div>
+
+    <!-- GLOSSARY TAB -->
+    <div id="tab-glossary" class="hub-tab-panel">
+      <div class="tab-inner">
+        <h2 class="section-title">GLOSSARY — TRAITS</h2>
+        <p class="config-hint">Exact mechanical effects sourced from live combat logic. Values apply during the run only.</p>
+        <div id="glossary-traits"></div>
       </div>
     </div>
 
@@ -97,7 +108,20 @@
     <footer class="hub-footer">
       <button id="launch-btn" class="launch-btn">▶  LAUNCH RUN</button>
       <p class="launch-note">Zero input during the run. You are an observer. Victory comes from preparation.</p>
+      <button id="abandon-btn" class="abandon-territory-btn" title="Wipe all progress and restore the starter flock">ABANDON TERRITORY</button>
     </footer>
+  </div>
+
+  <!-- ABANDON TERRITORY MODAL -->
+  <div id="abandon-modal" class="modal-overlay hidden">
+    <div class="modal-box danger-box">
+      <h2 class="modal-title">ABANDON TERRITORY?</h2>
+      <p class="modal-body">All birds, Seed, Plumes, and Commander XP will be forgotten. The flock will be disbanded. The territory will be lost.<br><br>This cannot be undone.</p>
+      <div class="modal-actions">
+        <button id="abandon-cancel-btn" class="modal-cancel-btn">STAY</button>
+        <button id="abandon-confirm-btn" class="modal-danger-btn">ABANDON EVERYTHING</button>
+      </div>
+    </div>
   </div>
 
   <!-- ═══════════════════════════════════
@@ -105,41 +129,12 @@
        ═══════════════════════════════════ -->
   <div id="screen-level-select" class="screen">
     <header class="hub-header">
-      <h1 class="game-title">SELECT MISSION</h1>
-      <p class="hub-subtitle">CHOOSE LEVEL AND DIFFICULTY</p>
+      <h1 class="game-title">LAUNCH CAMPAIGN</h1>
+      <p class="hub-subtitle">3 STAGES · 3 BOSSES · OPTIONAL INFINITE MODE</p>
     </header>
 
     <div class="level-select-layout">
-
-      <div class="level-tile selected" id="tile-level1" data-level="1">
-        <div class="level-tile-header">
-          <span class="level-num">LEVEL 1</span>
-          <span class="level-name">THE SOLAR CANOPY</span>
-        </div>
-        <p class="level-desc">A sprawling solar farm reclaimed by tropical vegetation. Vine-draped panels, embedded turret nests, drone swarms. Introductory enemy density — teaches formation basics and simple call card use.</p>
-        <div class="difficulty-row" data-level="1">
-          <button class="difficulty-btn active" data-difficulty="normal">NORMAL</button>
-          <button class="difficulty-btn" id="l1-hard-btn" data-difficulty="hard">HARD</button>
-          <button class="difficulty-btn" id="l1-brutal-btn" data-difficulty="brutal">BRUTAL</button>
-        </div>
-        <div class="level-best" id="best-level1"></div>
-      </div>
-
-      <div class="level-tile" id="tile-level2" data-level="2">
-        <div class="level-tile-header">
-          <span class="level-num">LEVEL 2</span>
-          <span class="level-name">TURBINE GORGE</span>
-        </div>
-        <p class="level-desc">A deep canyon lined with spinning wind turbines. Rival sparrows on updrafts, flak balloons tethered between towers. Environmental hazards demand formation awareness and stamina management.</p>
-        <div class="difficulty-row" data-level="2">
-          <button class="difficulty-btn active" data-difficulty="normal">NORMAL</button>
-          <button class="difficulty-btn" id="l2-hard-btn" data-difficulty="hard">HARD</button>
-          <button class="difficulty-btn" id="l2-brutal-btn" data-difficulty="brutal">BRUTAL</button>
-        </div>
-        <div class="level-best" id="best-level2"></div>
-        <div class="locked-overlay" id="level2-lock">CLEAR LEVEL 1 NORMAL TO UNLOCK</div>
-      </div>
-
+      <div id="level-select-inner"></div>
     </div>
 
     <div class="level-select-actions">
@@ -213,6 +208,29 @@
         <button id="retry-btn" class="action-btn primary-btn">⟳  INSTANT RETRY</button>
         <button id="hub-btn" class="action-btn secondary-btn">⌂  RETURN TO HQ</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       HOW-TO-PLAY OVERLAY
+       ═══════════════════════════════════ -->
+  <div id="howto-overlay" class="howto-overlay hidden">
+    <div class="howto-panel">
+      <h2 class="howto-title">HOW TO PLAY</h2>
+      <ol class="howto-list">
+        <li><strong>NEST</strong> — Spend Seed to recruit birds into your Roster. Each bird has a species, role, and optional traits.</li>
+        <li><strong>ROSTER / FORMATION</strong> — Arrange your flock. Pick a formation that suits your strategy (Flying V for healing, Tight Cluster for aura stacking, etc.).</li>
+        <li><strong>CALL CARDS</strong> — Set conditional rules: "IF flock HP &lt; 50% THEN switch to Evasive." Cards fire automatically — no mid-run input.</li>
+        <li><strong>CAMPAIGN</strong> — Your flock auto-fights through 3 stages. Each stage ends with a boss. Survive all 3 to complete a run.</li>
+        <li><strong>DEBRIEF</strong> — Earn Seed from kills &amp; survivors. Spend it in the Nest to rebuild after losses.</li>
+        <li><strong>RELEASE</strong> — Return a bird for 80% Seed if you need funds. Use it strategically when veterans fall and you need fresh recruits.</li>
+        <li><strong>INFINITE MODE</strong> — After Boss 3, Stage 3 loops with ×1.25 threat scaling per loop. Seed rewards scale with loop count.</li>
+      </ol>
+      <div class="howto-tip">
+        <span class="howto-tip-label">TIP</span>
+        No Seed and no Roster? A <strong>Feathered Loiterer</strong> will join for free from the Nest — weak enough to replace, strong enough to earn your next recruit.
+      </div>
+      <button id="howto-close-btn" class="howto-close-btn">GOT IT — CLOSE</button>
     </div>
   </div>
 

@@ -645,10 +645,13 @@ body {
 
 .level-select-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 16px;
   padding: 20px;
   flex: 1;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .level-tile {
@@ -1073,6 +1076,333 @@ body {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
 
+
+/* ── HOW-TO-PLAY BUTTON ── */
+.howto-trigger-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 9px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.12s;
+  line-height: 1;
+  align-self: center;
+}
+.howto-trigger-btn:hover {
+  border-color: var(--amber);
+  color: var(--amber-hi);
+}
+
+
+/* ── HOW-TO-PLAY OVERLAY ── */
+.howto-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8,12,6,0.88);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.howto-overlay.hidden { display: none; }
+
+.howto-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  max-width: 560px;
+  width: 100%;
+  padding: 28px 30px 24px;
+  box-shadow: 0 0 40px rgba(180,120,20,0.15);
+}
+
+.howto-title {
+  font-size: 14px;
+  letter-spacing: 0.25em;
+  color: var(--amber-hi);
+  margin: 0 0 18px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.howto-list {
+  margin: 0 0 18px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.howto-list li {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+}
+
+.howto-list li strong {
+  color: var(--amber-hi);
+  letter-spacing: 0.1em;
+}
+
+.howto-tip {
+  background: rgba(60,200,120,0.06);
+  border: 1px solid rgba(60,200,120,0.22);
+  border-radius: 3px;
+  padding: 10px 14px;
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+
+.howto-tip-label {
+  color: var(--green-hi);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin-right: 6px;
+}
+
+.howto-tip strong {
+  color: var(--green-hi);
+}
+
+.howto-close-btn {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hi);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.howto-close-btn:hover {
+  background: var(--bg-card);
+  border-color: var(--amber);
+  color: var(--amber-hi);
+}
+
+
+/* ── CAMPAIGN TILE / INFINITE MODE ── */
+.campaign-tile {
+  cursor: default;
+}
+
+.inf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 10px;
+  color: var(--text);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.inf-toggle input[type="checkbox"] {
+  accent-color: var(--amber);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.inf-hint {
+  color: var(--text-muted);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  font-style: italic;
+}
+
+
+/* ── PITY RECRUIT CARD ── */
+.pity-card {
+  border-color: rgba(138,170,80,0.35);
+  opacity: 0.85;
+}
+
+.pity-card .recruit-cost.pity-cost {
+  color: var(--green-hi);
+  border-color: rgba(60,200,120,0.4);
+  font-style: italic;
+  letter-spacing: 0.12em;
+}
+
+.pity-recruit-btn {
+  background: transparent !important;
+  border: 1px solid rgba(138,170,80,0.5) !important;
+  color: var(--green-hi) !important;
+}
+
+.pity-recruit-btn:hover {
+  border-color: var(--green-hi) !important;
+  background: rgba(60,200,120,0.06) !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   CLUELESS BORB
+   ════════════════════════════════════════════════ */
+
+.borb-card {
+  opacity: 0.80;
+  border-style: dashed !important;
+}
+
+.borb-card:hover {
+  opacity: 1;
+}
+
+.add-borb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed rgba(144, 144, 170, 0.40);
+  border-radius: 4px;
+  color: rgba(144, 144, 170, 0.70);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.add-borb-btn:hover {
+  border-color: rgba(144, 144, 170, 0.80);
+  color: rgba(144, 144, 170, 1);
+  background: rgba(144, 144, 170, 0.06);
+}
+
+/* ════════════════════════════════════════════════
+   ABANDON TERRITORY BUTTON
+   ════════════════════════════════════════════════ */
+
+.abandon-territory-btn {
+  display: block;
+  margin: 10px auto 0;
+  padding: 5px 14px;
+  background: transparent;
+  border: 1px solid rgba(180, 60, 60, 0.30);
+  border-radius: 3px;
+  color: rgba(180, 60, 60, 0.55);
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.abandon-territory-btn:hover {
+  border-color: rgba(220, 80, 80, 0.70);
+  color: rgba(220, 80, 80, 0.90);
+  background: rgba(180, 60, 60, 0.06);
+}
+
+/* ════════════════════════════════════════════════
+   ABANDON TERRITORY MODAL
+   ════════════════════════════════════════════════ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+.modal-box {
+  background: #111820;
+  border: 1px solid rgba(100, 120, 140, 0.40);
+  border-radius: 6px;
+  padding: 28px 32px;
+  max-width: 380px;
+  width: 90%;
+  text-align: center;
+}
+
+.modal-box.danger-box {
+  border-color: rgba(200, 60, 60, 0.55);
+}
+
+.modal-title {
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  color: rgba(220, 80, 80, 0.90);
+  margin: 0 0 14px;
+}
+
+.modal-body {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(200, 200, 210, 0.75);
+  margin: 0 0 22px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.modal-cancel-btn {
+  padding: 7px 18px;
+  background: transparent;
+  border: 1px solid rgba(140, 160, 180, 0.40);
+  border-radius: 3px;
+  color: rgba(160, 180, 200, 0.70);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.modal-cancel-btn:hover {
+  border-color: rgba(160, 180, 200, 0.80);
+  color: rgba(200, 220, 240, 0.90);
+}
+
+.modal-danger-btn {
+  padding: 7px 18px;
+  background: rgba(180, 40, 40, 0.15);
+  border: 1px solid rgba(200, 60, 60, 0.60);
+  border-radius: 3px;
+  color: rgba(220, 90, 90, 0.90);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.modal-danger-btn:hover {
+  background: rgba(200, 40, 40, 0.30);
+  border-color: rgba(230, 80, 80, 0.90);
+  color: #ff9090;
+}
 
 /* ── RESPONSIVE ── */
 @media (max-width: 760px) {
