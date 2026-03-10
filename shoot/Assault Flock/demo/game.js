@@ -15,6 +15,7 @@ const CARD_COOLDOWN= 5.0;    // seconds before same card can re-fire
 const BIRD_R       = 13;
 const ENEMY_R      = 11;
 const PROJ_R       = 3;
+const BIRD_ICON    = '^';    // Central icon used for all bird canvas/UI visuals
 
 const UNLOCK = {
   SPREAD_LINE:    100,
@@ -36,6 +37,7 @@ const SPECIES = {
   angry_honker:     { label:'Angry Honker',      init:'AH', role:'Anchor',      color:'#d4860a', hp:130, dmg:38, spd:0.8, range:100, atkRate:0.3, aggression:0.4, combatClass:'melee',  rangedType:null,       critChance:0.10, peelSpd:2.8 },
   wise_old_bird:    { label:'Wise Old Bird',     init:'WB', role:'Specialist',  color:'#50a0cc', hp:72,  dmg:30, spd:1.1, range:160, atkRate:0.45,aggression:0.6, combatClass:'ranged', rangedType:'sniper',   critChance:0.12, peelSpd:0   },
   beach_screamer:   { label:'Beach Screamer',    init:'BS', role:'Medic',       color:'#40c0a0', hp:95,  dmg:9,  spd:1.2, range:65,  atkRate:0.7, aggression:0.2, combatClass:'ranged', rangedType:'triple',   critChance:0.10, peelSpd:0   },
+  clueless_borb:    { label:'Clueless Borb',     init:'CB', role:'Filler',      color:'#9090aa', hp:30,  dmg:4,  spd:1.0, range:80,  atkRate:0.6, aggression:0.1, combatClass:'ranged', rangedType:'rapid',    critChance:0.05, peelSpd:0   },
 };
 
 const TRAITS = {
@@ -47,7 +49,16 @@ const TRAITS = {
   'Cautious':        { type:'negative', desc:'Delays before aggressive calls.' },
   'Hates the Front': { type:'negative', desc:'Morale penalty when leading.' },
   'Hates Drones':    { type:'negative', desc:'Morale penalty near drones; bonus damage vs drones.' },
+  'Clueless':        { type:'negative', desc:'Random delay before executing Call Cards.' },
 };
+
+// ── Mid-Run Leveling & Genetic Inheritance ───────────────────
+const STAT_GROWTH_RATES = { hp:0.08, dmg:0.10, spd:0.05, atkRate:0.06, critChance:0.04 };
+// Max growth multiplier caps (relative to base stat, e.g. 2.0 = up to 2× base)
+const STAT_GROWTH_CAPS  = { spd:2.0, atkRate:2.0, critChance:2.5 };
+const XP_PER_LEVEL      = (lvl) => Math.floor(50 * Math.pow(1.4, lvl - 1));
+const MAX_BIRD_LEVEL    = 10;
+const SCALABLE_STATS    = ['hp', 'dmg', 'spd', 'atkRate', 'critChance'];
 
 // ════════════════════════════════════════════════
 // FORMATION OFFSETS  (relative to FLOCK_X, FLOCK_Y)
@@ -200,8 +211,42 @@ function buildScheduleLevel2() {
   return s.sort((a, b) => a.time - b.time);
 }
 
+function buildScheduleLevel3() {
+  const s = [];
+  // Heavy sparrow pairs every 5s
+  for (let t = 3; t <= 62; t += 5) {
+    s.push({ time: t,     type: 'sparrow' });
+    s.push({ time: t + 1, type: 'sparrow' });
+  }
+  // Continuous drone waves
+  for (let t = 4; t <= 60; t += 6) {
+    const n = Math.min(3 + Math.floor(t / 10), 6);
+    for (let i = 0; i < n; i++) s.push({ time: t + i * 0.5, type: 'drone' });
+  }
+  // Sniper pairs every 8s
+  for (let t = 10; t <= 60; t += 8) {
+    s.push({ time: t,     type: 'sniper' });
+    s.push({ time: t + 2, type: 'sniper' });
+  }
+  // Flak every 8s
+  for (let t = 8; t <= 58; t += 8) {
+    s.push({ time: t, type: 'flak' });
+  }
+  // Turrets every 12s
+  for (let t = 12; t <= 55; t += 12) {
+    s.push({ time: t, type: 'turret' });
+    s.push({ time: t + 2, type: 'turret' });
+  }
+  // Environmental hazards — all types
+  for (let t = 5; t <= 55; t += 12)  s.push({ time: t, type: 'hazard_turbine' });
+  for (let t = 8; t <= 58; t += 14)  s.push({ time: t, type: 'hazard_updraft' });
+  for (let t = 15; t <= 60; t += 18) s.push({ time: t, type: 'hazard_crosswind' });
+  for (let t = 10; t <= 50; t += 20) s.push({ time: t, type: 'hazard_glare' });
+  return s.sort((a, b) => a.time - b.time);
+}
+
 function buildSchedule(level, difficulty) {
-  const base = level === 2 ? buildScheduleLevel2() : buildScheduleLevel1();
+  const base = level === 3 ? buildScheduleLevel3() : level === 2 ? buildScheduleLevel2() : buildScheduleLevel1();
   if (difficulty === 'normal') return base;
   const extra = [];
   base.forEach(ev => {
@@ -216,34 +261,36 @@ function buildSchedule(level, difficulty) {
 // SAVE / LOAD  (localStorage)
 // ════════════════════════════════════════════════
 
-const SAVE_KEY = 'af_save_v3';
+const SAVE_KEY = 'af_save_v5';
 
 const STARTER_BIRDS = [
-  { id:'s0', name:'Rex',      species:'danger_sparrow',   traits:['Reckless'],        xp:0, runsSurvived:0 },
-  { id:'s1', name:'Blaze',    species:'danger_sparrow',   traits:['Vengeful'],        xp:0, runsSurvived:0 },
-  { id:'s2', name:'Pidge',    species:'feathered_loiter', traits:[],                  xp:0, runsSurvived:0 },
-  { id:'s3', name:'Coo',      species:'feathered_loiter', traits:[],                  xp:0, runsSurvived:0 },
-  { id:'s4', name:'Mortimer', species:'goth_chicken',     traits:['Cautious'],        xp:0, runsSurvived:0 },
-  { id:'s5', name:'Gerald',   species:'angry_honker',     traits:['Enduring'],        xp:0, runsSurvived:0 },
-  { id:'s6', name:'Archie',   species:'wise_old_bird',    traits:['Protective'],      xp:0, runsSurvived:0 },
-  { id:'s7', name:'Sandy',    species:'beach_screamer',   traits:[],                  xp:0, runsSurvived:0 },
+  { id:'s0', name:'Rex',      species:'danger_sparrow',   traits:['Reckless'],        xp:0, runsSurvived:0, growthModifiers:{} },
+  { id:'s1', name:'Blaze',    species:'danger_sparrow',   traits:['Vengeful'],        xp:0, runsSurvived:0, growthModifiers:{} },
+  { id:'s2', name:'Pidge',    species:'feathered_loiter', traits:[],                  xp:0, runsSurvived:0, growthModifiers:{} },
+  { id:'s3', name:'Coo',      species:'feathered_loiter', traits:[],                  xp:0, runsSurvived:0, growthModifiers:{} },
+  { id:'s4', name:'Mortimer', species:'goth_chicken',     traits:['Cautious'],        xp:0, runsSurvived:0, growthModifiers:{} },
+  { id:'s5', name:'Gerald',   species:'angry_honker',     traits:['Enduring'],        xp:0, runsSurvived:0, growthModifiers:{} },
+  { id:'s6', name:'Archie',   species:'wise_old_bird',    traits:['Protective'],      xp:0, runsSurvived:0, growthModifiers:{} },
+  { id:'s7', name:'Sandy',    species:'beach_screamer',   traits:[],                  xp:0, runsSurvived:0, growthModifiers:{} },
 ];
 
 function defaultProfile() {
   return {
     commanderXp:          0,
-    scrap:                150,
+    seed:                 150,
     plumes:               0,
     personalBests:        {},
     hallOfFeathers:       [],
     nestPool:             [],
     nestRefreshCount:     0,
     eggLegacy:            { statBonus:0, poolSize:4, traitQuality:0 },
+    geneticBuffs:         [],
     roster:               JSON.parse(JSON.stringify(STARTER_BIRDS)),
     activeRoster:         ['s0','s1','s2','s3','s4','s5','s6','s7'],
     positionAssignments:  {},
     selectedFormation:    'flying_v',
     runCount:             0,
+    infiniteMode:         false,
   };
 }
 
@@ -253,10 +300,47 @@ function saveProfile() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(profile)); } catch(e) { /* offline */ }
 }
 
+function abandonTerritory() {
+  ['af_save_v5', 'af_save_v4', 'af_save_v3'].forEach(k => {
+    try { localStorage.removeItem(k); } catch(e) { /* offline */ }
+  });
+  profile = defaultProfile();
+  saveProfile();
+  location.reload();
+}
+
 function loadProfile() {
+  // One-time migration: v3 (scrap → seed) → v4
+  try {
+    const legacyRaw = localStorage.getItem('af_save_v3');
+    if (legacyRaw) {
+      const old = JSON.parse(legacyRaw);
+      old.seed = old.scrap ?? 150;
+      delete old.scrap;
+      localStorage.setItem('af_save_v4', JSON.stringify(old));
+      localStorage.removeItem('af_save_v3');
+    }
+  } catch(e) { /* ignore migration errors */ }
+  // One-time migration: v4 → v5 (add geneticBuffs, growthModifiers)
+  try {
+    const v4Raw = localStorage.getItem('af_save_v4');
+    if (v4Raw) {
+      const old = JSON.parse(v4Raw);
+      if (!old.geneticBuffs) old.geneticBuffs = [];
+      if (old.roster) old.roster.forEach(b => { if (!b.growthModifiers) b.growthModifiers = {}; });
+      localStorage.setItem('af_save_v5', JSON.stringify(old));
+      localStorage.removeItem('af_save_v4');
+    }
+  } catch(e) { /* ignore migration errors */ }
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) profile = Object.assign(defaultProfile(), JSON.parse(raw));
+    if (raw) {
+      const loaded = JSON.parse(raw);
+      // Ensure new fields exist even on partially-old saves
+      if (!loaded.geneticBuffs) loaded.geneticBuffs = [];
+      if (loaded.roster) loaded.roster.forEach(b => { if (!b.growthModifiers) b.growthModifiers = {}; });
+      profile = Object.assign(defaultProfile(), loaded);
+    }
   } catch(e) { profile = defaultProfile(); }
 }
 
@@ -268,40 +352,107 @@ let state = {};
 
 function buildRunFlock() {
   return profile.activeRoster.slice(0, 12).map((id, i) => {
-    const bird = profile.roster.find(b => b.id === id);
-    if (!bird) return null;
-    const sp = SPECIES[bird.species];
+    const profileBird = profile.roster.find(b => b.id === id);
+    if (!profileBird) return null;
+    const sp      = SPECIES[profileBird.species];
+    const sMult   = profileBird.statMult || 1;
+    const baseStats = {
+      hp:         sp.hp         * sMult,
+      dmg:        sp.dmg        * sMult,
+      spd:        sp.spd,
+      atkRate:    sp.atkRate,
+      critChance: sp.critChance,
+    };
     return {
-      id, name: bird.name, species: bird.species,
-      traits:       bird.traits || [],
-      hp:           sp.hp, maxHp: sp.hp,
-      stamina:      100,
+      id, name: profileBird.name, species: profileBird.species,
+      traits:          profileBird.traits || [],
+      hp:              baseStats.hp, maxHp: baseStats.hp,
+      stamina:         100,
       x: FLOCK_X + (i - 3.5) * 20, y: FLOCK_Y,
       targetX: FLOCK_X, targetY: FLOCK_Y,
-      formationSlot: i,
-      alive:        true,
-      atkCooldown:  i * 0.25,
-      healCooldown: 0,
-      flashTimer:   0,
-      slipstreamHot:0,
-      deathTime:    null,
-      debuffApplied:false,
-      subflocked:   false,
-      subflockTimer:0,
-      updraftTimer: 0,
-      meleeState:   'idle',
-      meleeTarget:  null,
-      chargeDir:    { x: 0, y: -1 },
-      chargeEndX:   0,
-      chargeEndY:   0,
-      chargeHit:    [],
+      formationSlot:   i,
+      alive:           true,
+      atkCooldown:     i * 0.25,
+      healCooldown:    0,
+      flashTimer:      0,
+      slipstreamHot:   0,
+      deathTime:       null,
+      debuffApplied:   false,
+      subflocked:      false,
+      subflockTimer:   0,
+      updraftTimer:    0,
+      meleeState:      'idle',
+      meleeTarget:     null,
+      chargeDir:       { x: 0, y: -1 },
+      chargeEndX:      0,
+      chargeEndY:      0,
+      chargeHit:       [],
+      // Mid-run leveling
+      xp:              0,
+      level:           1,
+      baseStats,
+      growthModifiers: profileBird.growthModifiers || {},
+      liveSp:          null,
     };
   }).filter(Boolean);
 }
 
+// Prunes state.birds to only the birds actually assigned to a formation slot,
+// then injects Clueless Borb entities for every slot assigned to 'borb'.
+// Must be called after initState() and after the position-assignment loop.
+function finalizeFlockForFormation(formation) {
+  const slotNames = FORMATION_SLOT_NAMES[formation] || [];
+
+  // Build the set of real bird IDs that are effectively assigned to a slot
+  // (explicit positionAssignments take priority; activeRoster[i] is the fallback default)
+  const assignedBirdIds = new Set(
+    slotNames.map((_, i) => {
+      const key = `${formation}_${i}`;
+      return profile.positionAssignments[key] || profile.activeRoster[i] || '';
+    }).filter(id => id && id !== 'borb')
+  );
+
+  // Remove any roster bird that has no formation slot — they should not enter battle
+  state.birds = state.birds.filter(b => assignedBirdIds.has(b.id));
+
+  // Inject borbs for slots explicitly assigned to 'borb'
+  injectBorbsForFormation(formation);
+}
+
+// Injects a Clueless Borb combat entity for every position slot assigned to 'borb'.
+// Called after initState() so state.birds already contains real roster birds.
+function injectBorbsForFormation(formation) {
+  const slotNames = FORMATION_SLOT_NAMES[formation] || [];
+  slotNames.forEach((_, i) => {
+    const key = `${formation}_${i}`;
+    if (profile.positionAssignments[key] !== 'borb') return;
+    const sp        = SPECIES['clueless_borb'];
+    const baseStats = { hp: sp.hp, dmg: sp.dmg, spd: sp.spd, atkRate: sp.atkRate, critChance: sp.critChance };
+    state.birds.push({
+      id:            'borb_' + i,
+      name:          'Borb',
+      species:       'clueless_borb',
+      traits:        ['Clueless'],
+      hp:            sp.hp, maxHp: sp.hp,
+      stamina:       100,
+      x: FLOCK_X + (i - 3.5) * 20, y: FLOCK_Y,
+      targetX: FLOCK_X, targetY: FLOCK_Y,
+      formationSlot: i, alive: true,
+      atkCooldown:   i * 0.25, healCooldown: 0,
+      flashTimer:    0, slipstreamHot: 0,
+      deathTime:     null, debuffApplied: false,
+      subflocked:    false, subflockTimer: 0,
+      updraftTimer:  0, meleeState: 'idle',
+      meleeTarget:   null, chargeDir: { x: 0, y: -1 },
+      chargeEndX:    0, chargeEndY: 0, chargeHit: [],
+      xp: 0, level: 1, baseStats,
+      growthModifiers: {}, liveSp: null, isBorb: true,
+    });
+  });
+}
+
 function initState(keepCards, keepFormation) {
   const savedCards = keepCards ? state.callCards : null;
-  const lvl        = (keepFormation && state.currentLevel)      || 1;
   const diff       = (keepFormation && state.currentDifficulty) || 'normal';
   const formation  = (keepFormation && state.formation)         || profile.selectedFormation;
 
@@ -321,14 +472,14 @@ function initState(keepCards, keepFormation) {
     kills:             0,
     runTime:           0,
     bgOffset:          0,
-    bgScrollSpeed:     lvl === 2 ? 45 : 55,
+    bgScrollSpeed:     55,
     simTimer:          0,
     cardFlash:         [0, 0, 0, 0],
     cardCooldowns:     [0, 0, 0, 0],
     focusTarget:       null,
     isReorganizing:    false,
     reorgTimer:        0,
-    spawnSchedule:     buildSchedule(lvl, diff),
+    spawnSchedule:     buildSchedule(1, diff),
     nextSpawnIdx:      0,
     enemyId:           0,
     projId:            0,
@@ -343,9 +494,13 @@ function initState(keepCards, keepFormation) {
     crosswindTimer:    0,
     totalSlipstreamHealing: 0,
     floatTexts:        [],
-    currentLevel:      lvl,
+    currentLevel:      1,
     currentDifficulty: diff,
     diffMult:          diff === 'brutal' ? 1.5 : diff === 'hard' ? 1.2 : 1.0,
+    stage:             1,
+    infiniteLoop:      0,
+    infiniteMode:      profile.infiniteMode || false,
+    bossForStage:      {},
     camera: { zoom:1.0, panX:0, panY:0, followId:null },
   };
 }
@@ -419,7 +574,7 @@ function spawnHazard(type) {
 
 function spawnBoss() {
   const types = ['a','b','c','d'];
-  const type  = types[Math.floor(Math.random() * types.length)];
+  const type  = state.bossForStage?.[state.stage] || types[Math.floor(Math.random() * types.length)];
   const data  = BOSS_POOL[type];
   const dm    = state.diffMult;
   state.boss = {
@@ -452,11 +607,13 @@ function dist(ax, ay, bx, by) {
   return Math.sqrt(dx*dx + dy*dy);
 }
 
-function fireProj(fromX, fromY, toX, toY, dmg, owner, color, debuffing, rangedType) {
+function fireProj(fromX, fromY, toX, toY, dmg, owner, color, debuffing, rangedType, ownerBird) {
   const d    = dist(fromX, fromY, toX, toY) || 1;
   const baseSpd = rangedType === 'rapid' ? 6.5 : rangedType === 'sniper' ? 4.0 : owner === 'bird' ? 5.5 : 3.8;
   const cx   = state.crosswindTimer > 0 ? state.crosswindX * 0.5 : 0;
   const trail = rangedType === 'sniper' ? [] : null;
+  const baseR = rangedType === 'rapid' ? 2 : rangedType === 'sniper' ? 5 : PROJ_R;
+  const lvl   = ownerBird?.level || 1;
   state.projectiles.push({
     id: ++state.projId,
     x: fromX, y: fromY,
@@ -466,25 +623,30 @@ function fireProj(fromX, fromY, toX, toY, dmg, owner, color, debuffing, rangedTy
     debuffing: !!debuffing,
     rangedType: rangedType || null,
     trail,
+    r: baseR * (1 + 0.06 * (lvl - 1)),
+    ownerBird: ownerBird || null,
   });
 }
 
-function spawnFloatText(x, y, text, color) {
+function spawnFloatText(x, y, text, color, fontSize) {
   state.floatTexts.push({
     x, y,
     text,
     color: color || '#ffe060',
     timer: 1.2,
     maxTimer: 1.2,
+    fontSize: fontSize || 11,
   });
 }
 
-function fireProjAngled(fromX, fromY, toX, toY, angleOffsetRad, dmg, owner, color, debuffing, rangedType) {
+function fireProjAngled(fromX, fromY, toX, toY, angleOffsetRad, dmg, owner, color, debuffing, rangedType, ownerBird) {
   const d   = dist(fromX, fromY, toX, toY) || 1;
   const baseAngle = Math.atan2(toY - fromY, toX - fromX);
   const a   = baseAngle + angleOffsetRad;
   const baseSpd = rangedType === 'rapid' ? 6.5 : rangedType === 'sniper' ? 4.0 : owner === 'bird' ? 5.5 : 3.8;
   const cx  = state.crosswindTimer > 0 ? state.crosswindX * 0.5 : 0;
+  const baseR = rangedType === 'rapid' ? 2 : rangedType === 'sniper' ? 5 : PROJ_R;
+  const lvl   = ownerBird?.level || 1;
   state.projectiles.push({
     id: ++state.projId,
     x: fromX, y: fromY,
@@ -494,6 +656,8 @@ function fireProjAngled(fromX, fromY, toX, toY, angleOffsetRad, dmg, owner, colo
     debuffing: !!debuffing,
     rangedType: rangedType || null,
     trail: null,
+    r: baseR * (1 + 0.06 * (lvl - 1)),
+    ownerBird: ownerBird || null,
   });
 }
 
@@ -741,6 +905,7 @@ function applyBirdAction(bird, act) {
         const sp = SPECIES[bird.species];
         fireProj(bird.x, bird.y, tgt.x, tgt.y, sp.dmg * 2.0, 'bird', '#f0e060');
         bird.atkCooldown = 1.0 / sp.atkRate;
+        if (bird.traits.includes('Clueless')) bird.atkCooldown += Math.random() * 0.6;
       }
       break;
     }
@@ -829,17 +994,109 @@ function evaluateSynergies() {
 }
 
 // ════════════════════════════════════════════════
+// MID-RUN LEVELING & GENETIC INHERITANCE
+// ════════════════════════════════════════════════
+
+function computeBirdStats(bird) {
+  const base = bird.baseStats;
+  const mods = bird.growthModifiers || {};
+  const liveSp = { ...SPECIES[bird.species] };
+  const lvl = bird.level;
+
+  SCALABLE_STATS.forEach(stat => {
+    const effectiveRate = STAT_GROWTH_RATES[stat] * (1 + (mods[stat] || 0));
+    const growthMult    = Math.min(STAT_GROWTH_CAPS[stat] || 999, Math.pow(1 + effectiveRate, lvl - 1));
+    liveSp[stat]        = base[stat] * growthMult;
+  });
+
+  // Scale maxHp and clamp current HP proportionally
+  const prevMaxHp = bird.maxHp;
+  bird.maxHp      = liveSp.hp;
+  if (prevMaxHp > 0 && bird.maxHp !== prevMaxHp) {
+    bird.hp = Math.min(bird.maxHp, bird.hp * (bird.maxHp / prevMaxHp));
+  }
+
+  bird.liveSp = liveSp;
+
+  if (lvl === 1 || lvl === MAX_BIRD_LEVEL) {
+    console.log(`[Level ${lvl}] ${bird.name} (${bird.species}): dmg=${liveSp.dmg.toFixed(1)}, spd=${liveSp.spd.toFixed(2)}, atkRate=${liveSp.atkRate.toFixed(2)}, crit=${(liveSp.critChance*100).toFixed(1)}%`);
+  }
+}
+
+function awardBirdXP(bird, amount) {
+  if (!bird || !bird.alive || bird.level >= MAX_BIRD_LEVEL || amount <= 0) return;
+  bird.xp += amount;
+  const threshold = XP_PER_LEVEL(bird.level);
+  if (bird.xp >= threshold) {
+    bird.xp -= threshold;
+    bird.level++;
+    computeBirdStats(bird);
+    spawnFloatText(bird.x, bird.y - 28, 'LEVEL UP!', '#ffd700', 15);
+    bird.flashTimer = Math.max(bird.flashTimer, 0.35);
+  }
+}
+
+function processDeathInheritance(bird) {
+  if (!bird.baseStats) return;
+  const base = bird.baseStats;
+  const mods = bird.growthModifiers || {};
+  const sp   = SPECIES[bird.species];
+
+  // Determine dominant stat: highest inherited modifier, or highest relative gain from leveling
+  let dominantStat = null;
+  let bestScore    = -1;
+
+  SCALABLE_STATS.forEach(stat => {
+    // Prefer whichever stat the bird had the biggest growth modifier on;
+    // fall back to relative gain from leveling for unmodified birds
+    const modScore   = mods[stat] || 0;
+    const levelScore = base[stat] > 0 ? ((bird.liveSp?.[stat] || base[stat]) - base[stat]) / base[stat] : 0;
+    const score      = modScore > 0 ? modScore : levelScore;
+    if (score > bestScore) { bestScore = score; dominantStat = stat; }
+  });
+
+  // Skip inheritance if the bird died at level 1 with no modifiers (nothing to pass on)
+  if (!dominantStat || (bird.level <= 1 && bestScore <= 0)) return;
+
+  const existing = profile.geneticBuffs.find(b => b.species === bird.species && b.stat === dominantStat);
+  if (existing) {
+    existing.modifier = Math.min(0.50, existing.modifier * 1.2);
+  } else {
+    profile.geneticBuffs.push({ species: bird.species, stat: dominantStat, modifier: 0.10 });
+  }
+  saveProfile();
+}
+
+// ════════════════════════════════════════════════
 // UPDATE — BIRDS
 // ════════════════════════════════════════════════
 
 function killBird(b) {
   if (!b.alive) return;
   b.hp = 0; b.alive = false; b.deathTime = state.runTime;
-  state.lostBirds.push({ name:b.name, species:b.species, time:state.runTime });
+  state.lostBirds.push({ id:b.id, name:b.name, species:b.species, time:state.runTime });
   state.morale = Math.max(0, state.morale - (b.species === 'angry_honker' ? 25 : 15));
-  if (b.traits.includes('Hates the Front') && b.formationSlot === 0) {
-    // No extra effect needed — already dying
-  }
+  processDeathInheritance(b);
+}
+
+function removeBird(id) {
+  profile.roster        = profile.roster.filter(b => b.id !== id);
+  profile.activeRoster  = profile.activeRoster.filter(rid => rid !== id);
+  Object.keys(profile.positionAssignments).forEach(key => {
+    if (profile.positionAssignments[key] === id) delete profile.positionAssignments[key];
+  });
+}
+
+function releaseBird(id) {
+  const bird = profile.roster.find(b => b.id === id);
+  if (!bird) return;
+  const sellValue = Math.floor((bird.cost || 0) * 0.8);
+  profile.seed += sellValue;
+  removeBird(id);
+  saveProfile();
+  buildRosterList();
+  buildFormationTab();
+  buildCurrencyDisplay();
 }
 
 function updateBirds(dt) {
@@ -850,7 +1107,7 @@ function updateBirds(dt) {
   state.birds.filter(b => b.alive).forEach(bird => {
     const slotIdx   = bird.formationSlot;
     const isLeader  = slotIdx === 0;
-    const sp        = SPECIES[bird.species];
+    const sp        = bird.liveSp || SPECIES[bird.species];
 
     // Sub-flock timer
     if (bird.subflocked) {
@@ -938,9 +1195,12 @@ function updateBirds(dt) {
               if (tgt.debuffed) dmg *= 1.12;
               tgt.hp -= dmg; tgt.flashTimer = 0.18;
               state.score += 50;
+              awardBirdXP(bird, dmg * 0.3);
               if (tgt.hp <= 0) { tgt.alive = false; state.bossKilled = true; state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30); }
             } else {
-              tgt.hp -= dmg * (tgt.debuffed ? 1.10 : 1.0); tgt.flashTimer = 0.18;
+              const finalDmg = dmg * (tgt.debuffed ? 1.10 : 1.0);
+              tgt.hp -= finalDmg; tgt.flashTimer = 0.18;
+              awardBirdXP(bird, finalDmg * 0.2);
               if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); }
             }
             bird.flashTimer = 0.18;
@@ -986,14 +1246,23 @@ function updateBirds(dt) {
               if (tgt.debuffed) dmg *= 1.12;
               tgt.hp -= dmg; tgt.flashTimer = 0.18;
               state.score += 50;
+              awardBirdXP(bird, dmg * 0.3);
               if (tgt.hp <= 0) { tgt.alive = false; state.bossKilled = true; state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30); }
             } else {
-              tgt.hp -= dmg * (tgt.debuffed ? 1.10 : 1.0); tgt.flashTimer = 0.18;
+              const finalDmg = dmg * (tgt.debuffed ? 1.10 : 1.0);
+              tgt.hp -= finalDmg; tgt.flashTimer = 0.18;
+              awardBirdXP(bird, finalDmg * 0.2);
               if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); }
             }
             bird.flashTimer  = 0.18;
             bird.atkCooldown = (1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.3;
-            bird.meleeState  = 'returning';
+            if (bird.traits.includes('Clueless')) bird.atkCooldown += Math.random() * 0.6;
+            if (bird.meleeTarget && bird.meleeTarget.alive) {
+              // Target survived the hit — keep peeling
+            } else {
+              bird.meleeTarget = null;
+              bird.meleeState  = 'returning';
+            }
           } else {
             bird.x += (tgt.x - bird.x) / dTgt * Math.min(dTgt, moveSpd);
             bird.y += (tgt.y - bird.y) / dTgt * Math.min(dTgt, moveSpd);
@@ -1001,13 +1270,26 @@ function updateBirds(dt) {
         }
 
       } else if (bird.meleeState === 'returning') {
-        const dSlot = dist(bird.x, bird.y, bird.targetX, bird.targetY);
-        const retSpd = sp.spd * spdMult * (0.4 + bird.stamina / 160) * dt * 60;
-        if (dSlot < 20) {
-          bird.meleeState = 'idle';
-        } else {
-          bird.x += (bird.targetX - bird.x) / dSlot * Math.min(dSlot, retSpd);
-          bird.y += (bird.targetY - bird.y) / dSlot * Math.min(dSlot, retSpd);
+        if (bird.atkCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
+          const reEngagePool = [
+            ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+            ...state.enemies.filter(e => e.alive),
+          ].filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range);
+          if (reEngagePool.length) {
+            bird.meleeTarget = reEngagePool.reduce((best, e) =>
+              dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
+            bird.meleeState = 'peeling';
+          }
+        }
+        if (bird.meleeState === 'returning') {
+          const dSlot = dist(bird.x, bird.y, bird.targetX, bird.targetY);
+          const retSpd = sp.spd * spdMult * (0.4 + bird.stamina / 160) * dt * 60;
+          if (dSlot < 20) {
+            bird.meleeState = 'idle';
+          } else {
+            bird.x += (bird.targetX - bird.x) / dSlot * Math.min(dSlot, retSpd);
+            bird.y += (bird.targetY - bird.y) / dSlot * Math.min(dSlot, retSpd);
+          }
         }
       }
 
@@ -1108,16 +1390,17 @@ function updateBirds(dt) {
               let shotDmg = dmg;
               const isCrit = Math.random() < sp.critChance;
               if (isCrit) { shotDmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
-              fireProjAngled(bird.x, bird.y, target.x, target.y, angleOff, shotDmg, 'bird', projColor, isDebuffing, sp.rangedType);
+              fireProjAngled(bird.x, bird.y, target.x, target.y, angleOff, shotDmg, 'bird', projColor, isDebuffing, sp.rangedType, bird);
             });
           } else {
             const isCrit = Math.random() < sp.critChance;
             if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); }
-            fireProj(bird.x, bird.y, target.x, target.y, dmg, 'bird', projColor, isDebuffing, sp.rangedType);
+            fireProj(bird.x, bird.y, target.x, target.y, dmg, 'bird', projColor, isDebuffing, sp.rangedType, bird);
           }
 
           bird.flashTimer  = 0.12;
           bird.atkCooldown = (1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.25;
+          if (bird.traits.includes('Clueless')) bird.atkCooldown += Math.random() * 0.6;
         } else {
           bird.atkCooldown = 0.4;
         }
@@ -1390,6 +1673,7 @@ function updateProjectiles(dt) {
           if (state.boss.debuffed) dmg *= 1.12;
           state.boss.hp -= dmg; state.boss.flashTimer = 0.1; p.alive = false;
           state.score += 50;
+          awardBirdXP(p.ownerBird, dmg * 0.3);
           if (state.boss.hp <= 0) {
             state.boss.alive = false; state.bossKilled = true;
             state.kills++; state.score += 1000;
@@ -1405,6 +1689,7 @@ function updateProjectiles(dt) {
           if (p.debuffing) { e.debuffed = true; e.debuffTimer = 5; }
           let dmg = p.dmg * (e.debuffed ? 1.10 : 1.0);
           e.hp -= dmg; e.flashTimer = 0.1; p.alive = false;
+          awardBirdXP(p.ownerBird, dmg * 0.2);
           if (e.hp <= 0) {
             e.alive = false; state.kills++; state.score += 100;
             state.morale = Math.min(100, state.morale + 4);
@@ -1440,6 +1725,7 @@ function updateProjectiles(dt) {
           if (protector && !b.traits.includes('Protective')) dmg *= 0.85;
 
           b.hp -= dmg; b.flashTimer = 0.2; p.alive = false;
+          awardBirdXP(b, p.dmg * 0.1);
           if (b.hp <= 0) killBird(b);
           break;
         }
@@ -1567,20 +1853,117 @@ function update(dt) {
   state.score += 8 * dt;
   updateHUD();
 
-  const allDead     = state.birds.every(b => !b.alive);
+  const allDead      = state.birds.every(b => !b.alive);
   const bossDefeated = state.bossTriggered && state.bossKilled;
   const timeout      = state.runTime >= (state.bossTriggered ? BOSS_TRIGGER + 80 : BOSS_TRIGGER + 5);
 
   if (allDead || bossDefeated || timeout) {
-    if (bossDefeated || (!allDead && timeout)) {
-      state.runSuccess = true;
-      state.score += state.birds.filter(b => b.alive).length * 200;
-      if (state.bossKilled) state.score += 500;
+    if (bossDefeated && state.stage < 3) {
+      advanceStage();
+      return;
+    } else if (bossDefeated && state.stage === 3 && state.infiniteMode) {
+      state.infiniteLoop++;
+      state.diffMult      *= 1.25;
+      state.runTime        = 0;
+      state.bossKilled     = false;
+      state.bossActive     = false;
+      state.bossTriggered  = false;
+      state.boss           = null;
+      state.enemies        = [];
+      state.projectiles    = [];
+      state.hazards        = [];
+      state.nextSpawnIdx   = 0;
+      state.crosswindTimer = 0;
+      state.spawnSchedule  = buildSchedule(3, state.currentDifficulty);
+      spawnFloatText(W / 2, H / 2 - 30, `LOOP ${state.infiniteLoop}`, '#ff8040');
+      spawnFloatText(W / 2, H / 2 + 10, `THREAT ×${state.diffMult.toFixed(2)}`, '#ff8040');
+      return;
+    } else {
+      if (bossDefeated || (!allDead && timeout)) {
+        state.runSuccess = true;
+        state.score += state.birds.filter(b => b.alive).length * 200;
+        if (state.bossKilled) state.score += 500;
+      }
+      state.score = Math.round(state.score);
+      running     = false;
+      setTimeout(showDebrief, 600);
     }
-    state.score = Math.round(state.score);
-    running     = false;
-    setTimeout(showDebrief, 600);
   }
+}
+
+// ════════════════════════════════════════════════
+// BIRD SPRITE  (bird.png tinted per species)
+// ════════════════════════════════════════════════
+
+let   birdMaskCanvas = null;
+const birdSprites    = {};   // keyed by species key, value is a pre-baked offscreen canvas
+
+function loadBirdSprite() {
+  const img = new Image();
+  img.src = 'bird.png';
+  img.onload = () => {
+    // Convert white-on-black silhouette → transparent alpha mask
+    // (white pixels become opaque, black pixels become transparent)
+    const tmp  = document.createElement('canvas');
+    tmp.width  = img.width;
+    tmp.height = img.height;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(img, 0, 0);
+    const id = tctx.getImageData(0, 0, tmp.width, tmp.height);
+    const d  = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114;
+      d[i] = d[i+1] = d[i+2] = 255;
+      d[i+3] = Math.round(lum);
+    }
+    tctx.putImageData(id, 0, 0);
+    birdMaskCanvas = tmp;
+    bakeBirdSprites();
+  };
+  img.onerror = () => { /* bird.png missing — canvas falls back to colored circle */ };
+}
+
+function bakeBirdSprites() {
+  if (!birdMaskCanvas) return;
+  const size = BIRD_R * 2 + 6;
+  Object.entries(SPECIES).forEach(([key, sp]) => {
+    const oc   = document.createElement('canvas');
+    oc.width   = size;
+    oc.height  = size;
+    const octx = oc.getContext('2d');
+    // 1) fill with species color
+    octx.fillStyle = sp.color;
+    octx.fillRect(0, 0, size, size);
+    // 2) mask to the bird silhouette shape
+    octx.globalCompositeOperation = 'destination-in';
+    octx.drawImage(birdMaskCanvas, 0, 0, size, size);
+    birdSprites[key] = oc;
+  });
+}
+
+// ════════════════════════════════════════════════
+// STAGE PROGRESSION
+// ════════════════════════════════════════════════
+
+function advanceStage() {
+  state.stage++;
+  state.currentLevel   = state.stage;
+  state.runTime        = 0;
+  state.bossKilled     = false;
+  state.bossActive     = false;
+  state.bossTriggered  = false;
+  state.boss           = null;
+  state.enemies        = [];
+  state.projectiles    = [];
+  state.hazards        = [];
+  state.nextSpawnIdx   = 0;
+  state.crosswindTimer = 0;
+  state.bgScrollSpeed  = state.stage === 2 ? 45 : 55;
+  state.spawnSchedule  = buildSchedule(state.stage, state.currentDifficulty);
+  spawnFloatText(W / 2, H / 2 - 30, `STAGE ${state.stage - 1} CLEAR`, '#50cc40');
+  spawnFloatText(W / 2, H / 2 + 10, `STAGE ${state.stage} INCOMING`, '#c8e060');
+  const lvlLabel = document.getElementById('hud-level-label');
+  if (lvlLabel) lvlLabel.textContent = `STAGE ${state.stage} · ${state.currentDifficulty.toUpperCase()}`;
 }
 
 // ════════════════════════════════════════════════
@@ -1615,7 +1998,7 @@ function render() {
 }
 
 function drawBackground() {
-  state.currentLevel === 2 ? drawBgGorge() : drawBgCanopy();
+  state.stage === 2 ? drawBgGorge() : drawBgCanopy();
 }
 
 function drawBgCanopy() {
@@ -1792,13 +2175,16 @@ function drawBirds() {
       ctx.setLineDash([]);
     }
 
-    // Body
-    ctx.fillStyle=sp.color; ctx.beginPath(); ctx.arc(bird.x,bird.y,BIRD_R,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.20)'; ctx.lineWidth=1; ctx.stroke();
-
-    // Initials
-    ctx.fillStyle='#ffffff'; ctx.font='bold 8px Courier New';
-    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(sp.init,bird.x,bird.y);
+    // Body — tinted bird sprite (falls back to colored circle if PNG not loaded)
+    const sprite = birdSprites[bird.species];
+    if (sprite) {
+      const sz = BIRD_R * 2 + 6;
+      ctx.drawImage(sprite, bird.x - sz / 2, bird.y - sz / 2, sz, sz);
+    } else {
+      ctx.fillStyle = sp.color;
+      ctx.beginPath(); ctx.arc(bird.x, bird.y, BIRD_R, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.20)'; ctx.lineWidth = 1; ctx.stroke();
+    }
 
     // HP bar
     const bW=24,bH=3,bx=bird.x-bW/2,by=bird.y+BIRD_R+4,hpF=bird.hp/bird.maxHp;
@@ -1934,9 +2320,9 @@ function drawBossBar() {
 function drawProjectiles() {
   state.projectiles.forEach(p => {
     if (!p.alive) return;
-    const r = p.rangedType === 'rapid'  ? 2
+    const r = p.r ?? (p.rangedType === 'rapid'  ? 2
             : p.rangedType === 'sniper' ? 5
-            : PROJ_R;
+            : PROJ_R);
 
     // Sniper trail
     if (p.rangedType === 'sniper' && p.trail !== null) {
@@ -1963,9 +2349,9 @@ function drawFloatTexts() {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.shadowColor = ft.color;
-    ctx.shadowBlur  = 6;
+    ctx.shadowBlur  = ft.fontSize > 11 ? 12 : 6;
     ctx.fillStyle   = ft.color;
-    ctx.font        = 'bold 11px Courier New';
+    ctx.font        = `bold ${ft.fontSize || 11}px Courier New`;
     ctx.textAlign   = 'center';
     ctx.textBaseline= 'middle';
     ctx.fillText(ft.text, ft.x, ft.y);
@@ -2046,6 +2432,89 @@ function updateHUD() {
 }
 
 // ════════════════════════════════════════════════
+// GLOSSARY
+// ════════════════════════════════════════════════
+
+const GLOSSARY_TRAITS = [
+  {
+    name: 'Enduring',
+    type: 'positive',
+    effect: 'Stamina drain ×0.70 (−30%) at all times.',
+    detail: 'Applied every update tick regardless of stance or position.',
+  },
+  {
+    name: 'Steady Wing',
+    type: 'positive',
+    effect: 'Stamina drain ×0.75 (−25%) when occupying the Leader slot.',
+    detail: 'Stacks with Enduring. Only active while this bird holds slot 0.',
+  },
+  {
+    name: 'Vengeful',
+    type: 'positive',
+    effect: 'Damage ×1.20 (+20%) once any ally has died this run.',
+    detail: 'Triggers permanently after the first death. Applies to charge, melee peel, and ranged attacks.',
+  },
+  {
+    name: 'Reckless',
+    type: 'positive',
+    effect: 'Damage ×1.10 (+10%) at all times.',
+    detail: 'Flat multiplier applied to every attack regardless of target or stance.',
+  },
+  {
+    name: 'Protective',
+    type: 'positive',
+    effect: 'Allies within 60px take ×0.85 incoming damage (−15%) while this bird is alive.',
+    detail: 'Does not protect other Protective birds. Area checked per hit event.',
+  },
+  {
+    name: 'Cautious',
+    type: 'negative',
+    effect: 'Damage ×0.85 (−15%) while the flock is in Aggressive stance.',
+    detail: 'Has no effect in Normal or Evasive stance. Applies to all attack types.',
+  },
+  {
+    name: 'Hates the Front',
+    type: 'negative',
+    effect: 'When in the Leader slot: stamina drain ×1.20 (+20%) and morale −0.4 per second.',
+    detail: 'Both penalties are continuous. Reassigning to a non-leader slot removes both effects.',
+  },
+  {
+    name: 'Hates Drones',
+    type: 'negative',
+    effect: 'Damage ×1.30 (+30%) vs drones. Morale −0.3 per second while within 90px of any drone.',
+    detail: 'The morale drain stacks per bird with this trait near each drone. The damage bonus applies in both melee and ranged attacks.',
+  },
+  {
+    name: 'Clueless',
+    type: 'negative',
+    effect: 'After every attack, atkCooldown += random(0, 0.6s).',
+    detail: 'Exclusive to the Clueless Borb. They fight, but erratically. They never learn.',
+  },
+];
+
+function buildGlossaryTab() {
+  const container = document.getElementById('glossary-traits');
+  if (!container) return;
+  container.innerHTML = '';
+  GLOSSARY_TRAITS.forEach(entry => {
+    const isPos = entry.type === 'positive';
+    const badgeColor  = isPos ? '#40c0a0' : '#e06030';
+    const borderColor = isPos ? '#40c0a055' : '#e0603055';
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid ${borderColor};border-radius:6px;margin-bottom:8px;`;
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;font-family:'Courier New',monospace;font-weight:700;color:#e8dfc8;letter-spacing:0.08em;">${entry.name}</span>
+        <span style="font-size:9px;font-family:'Courier New',monospace;color:${badgeColor};border:1px solid ${borderColor};padding:1px 5px;border-radius:3px;letter-spacing:0.05em;">${isPos ? 'POSITIVE' : 'NEGATIVE'}</span>
+      </div>
+      <div style="font-size:11px;font-family:'Courier New',monospace;color:#c8bfa8;">${entry.effect}</div>
+      <div style="font-size:10px;font-family:'Courier New',monospace;color:#8a7f6a;font-style:italic;">${entry.detail}</div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+// ════════════════════════════════════════════════
 // HUB UI
 // ════════════════════════════════════════════════
 
@@ -2058,6 +2527,7 @@ function buildHubUI() {
   buildCallCardSlots();
   buildNestTab();
   buildHallTab();
+  buildGlossaryTab();
 
   if (!_listenersInit) {
     _listenersInit = true;
@@ -2071,24 +2541,40 @@ function buildHubUI() {
         // Rebuild dynamic tabs when switching to them
         if (btn.dataset.tab === 'nest') buildNestTab();
         if (btn.dataset.tab === 'hall') buildHallTab();
+        if (btn.dataset.tab === 'glossary') buildGlossaryTab();
       });
     });
 
     document.getElementById('launch-btn')?.addEventListener('click', ()=>showScreen('level-select'));
+    document.getElementById('howto-btn')?.addEventListener('click', openHowto);
+    document.getElementById('howto-close-btn')?.addEventListener('click', closeHowto);
     document.getElementById('retry-btn')?.addEventListener('click', retryRun);
     document.getElementById('hub-btn')?.addEventListener('click', ()=>{ showScreen('hub'); buildHubUI(); });
     document.getElementById('back-to-hub-btn')?.addEventListener('click', ()=>showScreen('hub'));
     document.getElementById('confirm-launch-btn')?.addEventListener('click', startRun);
     document.getElementById('refresh-pool-btn')?.addEventListener('click', ()=>refreshNestPool(false));
+
+    document.getElementById('abandon-btn')?.addEventListener('click', () =>
+      document.getElementById('abandon-modal')?.classList.remove('hidden'));
+    document.getElementById('abandon-cancel-btn')?.addEventListener('click', () =>
+      document.getElementById('abandon-modal')?.classList.add('hidden'));
+    document.getElementById('abandon-confirm-btn')?.addEventListener('click', abandonTerritory);
   }
+}
+
+function openHowto() {
+  document.getElementById('howto-overlay')?.classList.remove('hidden');
+}
+function closeHowto() {
+  document.getElementById('howto-overlay')?.classList.add('hidden');
 }
 
 function buildCurrencyDisplay() {
   const xp  = document.getElementById('cur-xp');
-  const sc  = document.getElementById('cur-scrap');
+  const sc  = document.getElementById('cur-seed');
   const pl  = document.getElementById('cur-plumes');
   if (xp) xp.textContent  = profile.commanderXp;
-  if (sc) sc.textContent  = profile.scrap;
+  if (sc) sc.textContent  = profile.seed;
   if (pl) pl.textContent  = profile.plumes;
 }
 
@@ -2098,6 +2584,7 @@ function buildRosterList() {
   container.innerHTML = '';
   const rc = document.getElementById('roster-count');
   if (rc) rc.textContent = profile.activeRoster.length+' BIRDS';
+
   profile.activeRoster.forEach(id => {
     const bird = profile.roster.find(b=>b.id===id);
     if (!bird) return;
@@ -2112,8 +2599,10 @@ function buildRosterList() {
       : sp.rangedType === 'triple' ? 'TRIPLE'
       : 'RANGED';
     const combatColor = sp.combatClass === 'melee' ? '#e06030' : '#40c0a0';
+    const sellValue = Math.floor((bird.cost || 0) * 0.8);
+    const canSell   = profile.roster.length > 1;
     card.innerHTML=`
-      <div class="bird-badge" style="background:${sp.color}20; border-color:${sp.color}55;"><span style="color:${sp.color};">${sp.init}</span></div>
+      <div class="bird-badge" style="background:${sp.color}20; border-color:${sp.color}55;"><span style="color:${sp.color};">${BIRD_ICON}</span></div>
       <div class="bird-info">
         <div class="bird-name">${bird.name}</div>
         <div class="bird-species">${sp.label}${traitsStr}</div>
@@ -2123,9 +2612,31 @@ function buildRosterList() {
         <span style="font-size:9px;font-family:'Courier New',monospace;color:${combatColor};border:1px solid ${combatColor}55;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;">${combatLabel}</span>
       </div>
       <div class="bird-stats"><span>HP ${sp.hp}</span><span>DMG ${sp.dmg}</span></div>
+      <button class="release-bird-btn${canSell?'':' disabled'}" data-id="${bird.id}" title="${canSell?'Release for '+sellValue+' SEED':'Cannot release last bird'}" style="font-size:9px;font-family:'Courier New',monospace;background:transparent;border:1px solid #a0603055;color:#a06030;padding:2px 6px;border-radius:3px;cursor:${canSell?'pointer':'not-allowed'};letter-spacing:0.05em;white-space:nowrap;">RELEASE ${sellValue}</button>
     `;
+    if (canSell) {
+      card.querySelector('.release-bird-btn')?.addEventListener('click', () => releaseBird(bird.id));
+    }
     container.appendChild(card);
   });
+
+  // ── Permanent Borb info card (always shown at the bottom) ──
+  const sp = SPECIES['clueless_borb'];
+  const borbCard = document.createElement('div');
+  borbCard.className = 'bird-card borb-card';
+  borbCard.innerHTML = `
+    <div class="bird-badge" style="background:${sp.color}18; border-color:${sp.color}44;"><span style="color:${sp.color};opacity:0.65;">${BIRD_ICON}</span></div>
+    <div class="bird-info">
+      <div class="bird-name" style="color:${sp.color};">Clueless Borb</div>
+      <div class="bird-species" style="color:${sp.color};opacity:0.65;">Filler · Trait: Clueless · HP ${sp.hp} · DMG ${sp.dmg}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+      <span class="bird-role" style="color:${sp.color};border-color:${sp.color}44;opacity:0.65;">${sp.role}</span>
+      <span style="font-size:9px;font-family:'Courier New',monospace;color:${sp.color};opacity:0.45;border:1px solid ${sp.color}44;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;">RAPID</span>
+    </div>
+    <div class="bird-stats" style="opacity:0.5;font-style:italic;">ALWAYS AVAILABLE</div>
+  `;
+  container.appendChild(borbCard);
 }
 
 // ── Formation tab ──
@@ -2172,29 +2683,64 @@ function buildPositionEditor(formation) {
   const container = document.getElementById('position-editor');
   if (!container) return;
   container.innerHTML = '';
-  const slotNames  = FORMATION_SLOT_NAMES[formation] || [];
-  const birdOpts   = profile.activeRoster.map(id => {
-    const bird = profile.roster.find(b=>b.id===id);
-    if (!bird) return '';
-    const sp = SPECIES[bird.species];
-    return `<option value="${id}">${bird.name} (${sp.label})</option>`;
-  }).join('');
+  const slotNames = FORMATION_SLOT_NAMES[formation] || [];
+
+  // Snapshot current assignments for all slots up front
+  const assignments = slotNames.map((_, i) => {
+    const key = `${formation}_${i}`;
+    return profile.positionAssignments[key] || profile.activeRoster[i] || '';
+  });
+
+  // ── Fill with Borbs button ──
+  const borbSp      = SPECIES['clueless_borb'];
+  const fillBtn     = document.createElement('button');
+  fillBtn.className = 'add-borb-btn';
+  fillBtn.title     = 'Auto-assign a Clueless Borb to every unassigned position slot.';
+  fillBtn.innerHTML = `<span style="color:${borbSp.color};margin-right:6px;">${BIRD_ICON}</span> FILL EMPTY SLOTS WITH BORBS`;
+  fillBtn.addEventListener('click', () => {
+    slotNames.forEach((_, i) => {
+      const key = `${formation}_${i}`;
+      // Use the assignments snapshot — respects both explicit saves and activeRoster defaults
+      if (!assignments[i]) {
+        profile.positionAssignments[key] = 'borb';
+      }
+    });
+    saveProfile();
+    buildPositionEditor(formation);
+  });
+  container.appendChild(fillBtn);
 
   slotNames.forEach((name, i) => {
     const key     = `${formation}_${i}`;
-    const current = profile.positionAssignments[key] || profile.activeRoster[i] || '';
-    const row     = document.createElement('div');
+    const current = assignments[i];
+
+    // Real birds: only show birds not already assigned to another slot
+    const birdOpts = profile.activeRoster.map(id => {
+      const bird = profile.roster.find(b => b.id === id);
+      if (!bird) return '';
+      if (id !== current && assignments.some((a, j) => j !== i && a === id)) return '';
+      const sp  = SPECIES[bird.species];
+      const sel = id === current ? ' selected' : '';
+      return `<option value="${id}"${sel}>${bird.name} (${sp.label})</option>`;
+    }).join('');
+
+    // Borb option: selectable in every slot, no uniqueness restriction
+    const borbSel = current === 'borb' ? ' selected' : '';
+
+    const row = document.createElement('div');
     row.className = 'position-row';
     row.innerHTML = `
       <span class="position-label">${name}</span>
       <select class="position-select" data-key="${key}">
         <option value="">— unassigned —</option>
-        ${birdOpts.replace(`value="${current}"`,`value="${current}" selected`)}
+        <option value="borb"${borbSel} style="color:${borbSp.color};">Borb (Clueless · free)</option>
+        ${birdOpts}
       </select>
     `;
-    row.querySelector('select').addEventListener('change', ev=>{
+    row.querySelector('select').addEventListener('change', ev => {
       profile.positionAssignments[ev.target.dataset.key] = ev.target.value;
       saveProfile();
+      buildPositionEditor(formation);
     });
     container.appendChild(row);
   });
@@ -2352,17 +2898,32 @@ function generateRecruit() {
   const sp     = spKeys[Math.floor(Math.random()*spKeys.length)];
   const name   = BIRD_NAMES[Math.floor(Math.random()*BIRD_NAMES.length)]+'-'+Math.floor(Math.random()*90+10);
   const traitKeys = Object.keys(TRAITS);
-  const traits = Math.random()<0.7?[traitKeys[Math.floor(Math.random()*traitKeys.length)]]:[];
-  const base   = ({danger_sparrow:100,angry_honker:120,wise_old_bird:110,goth_chicken:80,beach_screamer:75,feathered_loiter:55})[sp]||60;
-  const tBonus = traits.some(t=>TRAITS[t]?.type==='positive')?30:0;
-  return { id:'r'+Date.now()+Math.floor(Math.random()*9999), name, species:sp, traits, xp:0, runsSurvived:0, cost:base+tBonus };
+  // eggLegacy.traitQuality raises trait roll chance from 70% toward 95%
+  const traitChance = Math.min(0.95, 0.70 + (profile.eggLegacy.traitQuality || 0) * 0.25);
+  const traits = Math.random() < traitChance ? [traitKeys[Math.floor(Math.random()*traitKeys.length)]] : [];
+  const baseCost = ({danger_sparrow:100,angry_honker:120,wise_old_bird:110,goth_chicken:80,beach_screamer:75,feathered_loiter:55})[sp]||60;
+  const tBonus   = traits.some(t=>TRAITS[t]?.type==='positive')?30:0;
+  // eggLegacy.statBonus applies a flat multiplier to base recruit stats (reflected in cost as a premium)
+  const statMult = 1 + (profile.eggLegacy.statBonus || 0);
+  const costMult = statMult > 1 ? Math.round((statMult - 1) * baseCost * 0.5) : 0;
+  // Attach any species-specific genetic growth modifiers
+  const relevantBuffs    = (profile.geneticBuffs || []).filter(b => b.species === sp);
+  const growthModifiers  = Object.fromEntries(relevantBuffs.map(b => [b.stat, b.modifier]));
+  return {
+    id: 'r'+Date.now()+Math.floor(Math.random()*9999),
+    name, species:sp, traits,
+    xp:0, runsSurvived:0,
+    cost: baseCost + tBonus + costMult,
+    statMult,
+    growthModifiers,
+  };
 }
 
 function refreshNestPool(force) {
   const cost = 50 + (profile.nestRefreshCount||0)*30;
   if (!force) {
-    if (profile.scrap < cost) return;
-    profile.scrap      -= cost;
+    if (profile.seed < cost) return;
+    profile.seed -= cost;
     profile.nestRefreshCount = (profile.nestRefreshCount||0)+1;
   }
   const n = Math.min(6, Math.floor(4+(profile.eggLegacy.poolSize||0)));
@@ -2380,7 +2941,7 @@ function buildNestTab() {
 
   const refreshCost = 50+(profile.nestRefreshCount||0)*30;
   const rc = document.getElementById('refresh-cost');
-  if (rc) rc.textContent=`(${refreshCost} SCRAP)`;
+  if (rc) rc.textContent=`(${refreshCost} SEED)`;
   const nr = document.getElementById('nest-roster-count');
   if (nr) nr.textContent=profile.roster.length;
 
@@ -2391,35 +2952,75 @@ function buildNestTab() {
       const ti=TRAITS[t];
       return `<span class="trait-pill ${ti?.type||''}">${t}</span>`;
     }).join('');
-    const canAfford = profile.scrap>=recruit.cost;
+    const canAfford = profile.seed>=recruit.cost;
     const full      = profile.roster.length>=12;
     card.innerHTML=`
       <div class="recruit-header">
-        <div class="bird-badge" style="background:${sp.color}20;border-color:${sp.color}55;"><span style="color:${sp.color};">${sp.init}</span></div>
+        <div class="bird-badge" style="background:${sp.color}20;border-color:${sp.color}55;"><span style="color:${sp.color};">${BIRD_ICON}</span></div>
         <div class="recruit-info"><div class="bird-name">${recruit.name}</div><div class="bird-species">${sp.label}</div></div>
         <span class="bird-role" style="color:${sp.color};border-color:${sp.color}55;">${sp.role}</span>
       </div>
       <div class="recruit-traits">${traitsHtml||'<span class="no-traits">No traits</span>'}</div>
-      <div class="recruit-stats"><span>HP ${sp.hp}</span><span>DMG ${sp.dmg}</span><span>SPD ${sp.spd}</span></div>
+      <div class="recruit-stats">
+        <span>HP ${recruit.statMult>1?Math.round(sp.hp*recruit.statMult):sp.hp}${recruit.statMult>1?'<span style="color:#6ec87a;font-size:9px;">+</span>':''}</span>
+        <span>DMG ${recruit.statMult>1?Math.round(sp.dmg*recruit.statMult):sp.dmg}${recruit.statMult>1?'<span style="color:#6ec87a;font-size:9px;">+</span>':''}</span>
+        <span>SPD ${sp.spd}</span>
+        ${Object.keys(recruit.growthModifiers||{}).length?`<span style="color:#c8a84a;font-size:9px;" title="Genetic growth buffs inherited from fallen bloodline">⬆ GENETIC</span>`:''}
+      </div>
       <div class="recruit-footer">
-        <span class="recruit-cost">${recruit.cost} SCRAP</span>
+        <span class="recruit-cost">${recruit.cost} SEED</span>
         <button class="recruit-btn ${canAfford&&!full?'':'disabled'}" data-id="${recruit.id}">
-          ${full?'ROSTER FULL':canAfford?'RECRUIT':'NEED SCRAP'}
+          ${full?'ROSTER FULL':canAfford?'RECRUIT':'NEED SEED'}
         </button>
       </div>
     `;
     card.querySelector('.recruit-btn')?.addEventListener('click',()=>{
       if (!canAfford||full) return;
-      profile.scrap -= recruit.cost;
-      const newBird = {id:recruit.id,name:recruit.name,species:recruit.species,traits:recruit.traits,xp:0,runsSurvived:0};
+      profile.seed -= recruit.cost;
+      const newBird = {
+        id: recruit.id, name: recruit.name, species: recruit.species,
+        traits: recruit.traits, xp: 0, runsSurvived: 0, cost: recruit.cost,
+        growthModifiers: recruit.growthModifiers || {},
+        statMult: recruit.statMult || 1,
+      };
       profile.roster.push(newBird);
       profile.activeRoster.push(newBird.id);
       profile.nestPool = profile.nestPool.filter(r=>r.id!==recruit.id);
+      profile.nestPool.push(generateRecruit());
       saveProfile();
-      buildNestTab(); buildRosterList(); buildCurrencyDisplay();
+      buildNestTab(); buildRosterList(); buildFormationTab(); buildCurrencyDisplay();
     });
     container.appendChild(card);
   });
+
+  // Pity system: if roster is empty and seed < cheapest recruit, offer a free Feathered Loiterer
+  const FL_RECRUIT_COST = 55;
+  if (profile.seed < FL_RECRUIT_COST && profile.roster.length === 0) {
+    const pitySp = SPECIES['feathered_loiter'];
+    const pityCard = document.createElement('div');
+    pityCard.className = 'nest-recruit-card pity-card';
+    pityCard.innerHTML = `
+      <div class="recruit-header">
+        <div class="bird-badge" style="background:${pitySp.color}20;border-color:${pitySp.color}55;"><span style="color:${pitySp.color};">${BIRD_ICON}</span></div>
+        <div class="recruit-info"><div class="bird-name">Stray</div><div class="bird-species">${pitySp.label}</div></div>
+        <span class="bird-role" style="color:${pitySp.color};border-color:${pitySp.color}55;">${pitySp.role}</span>
+      </div>
+      <div class="recruit-traits"><span class="no-traits">No traits — wandered in from nowhere</span></div>
+      <div class="recruit-stats"><span>HP ${pitySp.hp}</span><span>DMG ${pitySp.dmg}</span><span>SPD ${pitySp.spd}</span></div>
+      <div class="recruit-footer">
+        <span class="recruit-cost pity-cost" title="A bedraggled bird who wandered in. Free to deploy, easy to replace.">FREE</span>
+        <button class="recruit-btn pity-recruit-btn">ACCEPT</button>
+      </div>
+    `;
+    pityCard.querySelector('.pity-recruit-btn')?.addEventListener('click', () => {
+      const pityBird = { id:'pity_'+Date.now(), name:'Stray', species:'feathered_loiter', traits:[], xp:0, runsSurvived:0, cost:0 };
+      profile.roster.push(pityBird);
+      profile.activeRoster.push(pityBird.id);
+      saveProfile();
+      buildNestTab(); buildRosterList(); buildFormationTab(); buildCurrencyDisplay();
+    });
+    container.appendChild(pityCard);
+  }
 }
 
 // ════════════════════════════════════════════════
@@ -2440,7 +3041,7 @@ function buildHallTab() {
     const secs= Math.floor(entry.deathTime%60).toString().padStart(2,'0');
     const row = document.createElement('div'); row.className='hall-entry';
     row.innerHTML=`
-      <div class="bird-badge small" style="background:${sp.color}20;border-color:${sp.color}55;"><span style="color:${sp.color};">${sp.init}</span></div>
+      <div class="bird-badge small" style="background:${sp.color}20;border-color:${sp.color}55;"><span style="color:${sp.color};">${BIRD_ICON}</span></div>
       <div class="hall-info">
         <div class="hall-name">${entry.name} <span style="color:${sp.color};">(${sp.label})</span></div>
         <div class="hall-detail">Fell at ${mins}:${secs} · Run ${entry.runNum||'?'}</div>
@@ -2455,65 +3056,58 @@ function buildHallTab() {
 // LEVEL SELECT
 // ════════════════════════════════════════════════
 
-let selectedLevel      = 1;
 let selectedDifficulty = 'normal';
 
 function buildLevelSelect() {
-  const l2Unlocked = (profile.personalBests['1_normal']||0) > 0;
+  const container = document.getElementById('level-select-inner');
+  if (!container) return;
 
-  // Level 2 lock overlay
-  const lockEl = document.getElementById('level2-lock');
-  if (lockEl) lockEl.classList.toggle('hidden', l2Unlocked);
-  document.getElementById('tile-level2')?.classList.toggle('locked-tile', !l2Unlocked);
+  const hardUnlocked   = (profile.personalBests['campaign_normal']||0) > 0;
+  const brutalUnlocked = (profile.personalBests['campaign_hard']||0)   > 0;
 
-  // Difficulty locks
-  const locks = {
-    'l1-hard-btn':   (profile.personalBests['1_normal']||0) > 0,
-    'l1-brutal-btn': (profile.personalBests['1_hard']||0)   > 0,
-    'l2-hard-btn':   (profile.personalBests['2_normal']||0) > 0,
-    'l2-brutal-btn': (profile.personalBests['2_hard']||0)   > 0,
-  };
-  Object.entries(locks).forEach(([id,unlocked])=>{
-    document.getElementById(id)?.classList.toggle('locked', !unlocked);
-  });
+  const bests = ['normal','hard','brutal'].map(d=>{
+    const v = profile.personalBests[`campaign_${d}`]||0;
+    return v>0?`${d[0].toUpperCase()}: ${v.toLocaleString()}`:null;
+  }).filter(Boolean);
+  const bestStr = bests.length ? 'BEST: '+bests.join('  ') : 'No clears yet';
 
-  // Personal best display
-  [1,2].forEach(lvl=>{
-    const el = document.getElementById(`best-level${lvl}`);
-    if (!el) return;
-    const bests = ['normal','hard','brutal'].map(d=>{
-      const v = profile.personalBests[`${lvl}_${d}`]||0;
-      return v>0?`${d[0].toUpperCase()}: ${v.toLocaleString()}`:null;
-    }).filter(Boolean);
-    el.textContent = bests.length?'BEST: '+bests.join('  '):'No clears yet';
-  });
-
-  // Level tile click
-  document.querySelectorAll('.level-tile').forEach(tile=>{
-    tile.onclick=()=>{
-      const lvl=parseInt(tile.dataset.level);
-      if (lvl===2&&!l2Unlocked) return;
-      document.querySelectorAll('.level-tile').forEach(t=>t.classList.remove('selected'));
-      tile.classList.add('selected');
-      selectedLevel = lvl;
-      selectedDifficulty = tile.querySelector('.difficulty-btn.active')?.dataset.difficulty||'normal';
-    };
-  });
+  container.innerHTML = `
+    <div class="level-tile selected campaign-tile">
+      <div class="level-tile-header">
+        <span class="level-num">THE CAMPAIGN</span>
+        <span class="level-name">3-BOSS RUN</span>
+      </div>
+      <p class="level-desc">Stage 1: The Solar Canopy → Stage 2: Turbine Gorge → Stage 3: The Final Gauntlet. Each stage ends with a boss. Survive all three to complete a campaign run.</p>
+      <div class="difficulty-row" data-level="1" id="campaign-diff-row">
+        <button class="difficulty-btn active" data-difficulty="normal">NORMAL</button>
+        <button class="difficulty-btn ${hardUnlocked?'':'locked'}" data-difficulty="hard">HARD</button>
+        <button class="difficulty-btn ${brutalUnlocked?'':'locked'}" data-difficulty="brutal">BRUTAL</button>
+      </div>
+      <div class="level-best">${bestStr}</div>
+      <label class="inf-toggle">
+        <input type="checkbox" id="inf-mode-toggle" ${profile.infiniteMode?'checked':''}>
+        INFINITE MODE <span class="inf-hint">(Loop Stage 3 after Boss 3. Threat scales ×1.25 per loop.)</span>
+      </label>
+    </div>
+  `;
 
   // Difficulty buttons
-  document.querySelectorAll('.difficulty-btn').forEach(btn=>{
+  container.querySelectorAll('.difficulty-btn').forEach(btn=>{
     btn.onclick=()=>{
       if (btn.classList.contains('locked')) return;
-      const lvl = parseInt(btn.closest('.difficulty-row').dataset.level);
-      document.querySelectorAll(`#tile-level${lvl} .difficulty-btn`).forEach(b=>b.classList.remove('active'));
+      container.querySelectorAll('.difficulty-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      if (lvl===selectedLevel) selectedDifficulty=btn.dataset.difficulty;
+      selectedDifficulty = btn.dataset.difficulty;
     };
   });
 
-  // Default selection
-  document.getElementById('tile-level1')?.classList.add('selected');
-  selectedLevel=1; selectedDifficulty='normal';
+  // Infinite mode toggle
+  document.getElementById('inf-mode-toggle')?.addEventListener('change', ev=>{
+    profile.infiniteMode = ev.target.checked;
+    saveProfile();
+  });
+
+  selectedDifficulty = 'normal';
 }
 
 // ════════════════════════════════════════════════
@@ -2605,7 +3199,7 @@ function launchBattle() {
   const ind3=document.getElementById('card-ind-3');
   if (ind3) ind3.style.display=getCardSlotCount()>=4?'flex':'none';
   const lvlLabel=document.getElementById('hud-level-label');
-  if (lvlLabel) lvlLabel.textContent=`LEVEL ${state.currentLevel} · ${state.currentDifficulty.toUpperCase()}`;
+  if (lvlLabel) lvlLabel.textContent=`STAGE ${state.stage||1} · ${state.currentDifficulty.toUpperCase()}`;
   showScreen('battle');
   lastTS=performance.now(); running=true;
   animId=requestAnimationFrame(gameLoop);
@@ -2615,29 +3209,58 @@ function startRun() {
   const activeFormation = document.querySelector('.formation-btn.active')?.dataset.formation || profile.selectedFormation;
   const formation       = isFormationUnlocked(activeFormation) ? activeFormation : 'flying_v';
   initState(false, false);
-  state.currentLevel      = selectedLevel;
+  state.currentLevel      = 1;
   state.currentDifficulty = selectedDifficulty;
   state.formation         = formation;
   state.diffMult          = selectedDifficulty==='brutal'?1.5:selectedDifficulty==='hard'?1.2:1.0;
-  state.bgScrollSpeed     = selectedLevel===2?45:55;
-  state.spawnSchedule     = buildSchedule(selectedLevel, selectedDifficulty);
+  state.bgScrollSpeed     = 55;
+  state.spawnSchedule     = buildSchedule(1, selectedDifficulty);
+  state.stage             = 1;
+  state.infiniteMode      = profile.infiniteMode || false;
 
-  // Apply position assignments
+  // Assign unique bosses to each stage by shuffling the pool
+  const bossTypes = ['a','b','c','d'];
+  for (let i = bossTypes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [bossTypes[i], bossTypes[j]] = [bossTypes[j], bossTypes[i]];
+  }
+  state.bossForStage = { 1: bossTypes[0], 2: bossTypes[1], 3: bossTypes[2] };
+
+  // Apply position assignments for real birds
   const slotNames = FORMATION_SLOT_NAMES[formation]||[];
   slotNames.forEach((_,i)=>{
     const key        = `${formation}_${i}`;
     const assignedId = profile.positionAssignments[key];
-    if (assignedId) {
+    if (assignedId && assignedId !== 'borb') {
       const bird = state.birds.find(b=>b.id===assignedId);
       if (bird) bird.formationSlot=i;
     }
   });
 
+  // Prune unassigned birds and inject borbs
+  finalizeFlockForFormation(formation);
+
   launchBattle();
 }
 
 function retryRun() {
+  const prevDiff       = state.currentDifficulty || 'normal';
+  const prevInfinite   = state.infiniteMode || false;
+  const prevFormation  = state.formation || profile.selectedFormation;
   initState(true, true);
+  state.currentDifficulty = prevDiff;
+  state.diffMult          = prevDiff==='brutal'?1.5:prevDiff==='hard'?1.2:1.0;
+  state.stage             = 1;
+  state.currentLevel      = 1;
+  state.infiniteMode      = prevInfinite;
+  state.spawnSchedule     = buildSchedule(1, prevDiff);
+  const bossTypes = ['a','b','c','d'];
+  for (let i = bossTypes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [bossTypes[i], bossTypes[j]] = [bossTypes[j], bossTypes[i]];
+  }
+  state.bossForStage = { 1: bossTypes[0], 2: bossTypes[1], 3: bossTypes[2] };
+  finalizeFlockForFormation(state.formation || prevFormation);
   launchBattle();
 }
 
@@ -2651,37 +3274,42 @@ function showDebrief() {
 
   const survivors  = state.birds.filter(b=>b.alive);
   const xp         = Math.round(state.score/80);
-  const scrap      = state.kills*10+survivors.length*20+(state.bossKilled?80:0);
+  const baseSeed   = state.kills*10+survivors.length*20+(state.bossKilled?80:0);
+  const loopBonus  = 1 + (state.infiniteLoop||0) * 0.5;
+  const seed       = Math.round(baseSeed * loopBonus);
   const plumes     = state.bossKilled?Math.floor(1+Math.random()*2):0;
   const dm         = state.currentDifficulty==='brutal'?3:state.currentDifficulty==='hard'?2:1;
   const finalScore = Math.round(state.score*dm);
-  const bestKey    = `${state.currentLevel}_${state.currentDifficulty}`;
+  const bestKey    = `campaign_${state.currentDifficulty}`;
   const prevBest   = profile.personalBests[bestKey]||0;
   const isNewBest  = finalScore>prevBest;
 
   // Apply progression
   profile.commanderXp  += xp;
-  profile.scrap        += scrap;
+  profile.seed         += seed;
   profile.plumes       += plumes;
   profile.runCount      = (profile.runCount||0)+1;
   if (isNewBest) profile.personalBests[bestKey]=finalScore;
 
-  // Unlock next level on first success
-  if (state.runSuccess && state.currentLevel===1 && state.currentDifficulty==='normal') {
-    profile.personalBests['1_normal'] = Math.max(profile.personalBests['1_normal']||0, finalScore);
+  // Track campaign completion
+  if (state.runSuccess && state.stage >= 3) {
+    profile.personalBests['campaign_cleared'] = true;
   }
 
-  // Hall of Feathers
+  // Hall of Feathers — borbs are disposable and leave no legacy
   state.lostBirds.forEach(fallen=>{
+    if (fallen.id && fallen.id.startsWith('borb_')) return;
     const sp=SPECIES[fallen.species];
     profile.hallOfFeathers.push({ name:fallen.name, species:fallen.species, role:sp.role, deathTime:fallen.time, runNum:profile.runCount });
+    if (fallen.id) removeBird(fallen.id);
   });
 
-  // Egg legacy
-  if (state.lostBirds.length>0) {
-    profile.eggLegacy.statBonus   = Math.min(0.20, (profile.eggLegacy.statBonus||0)+0.005*state.lostBirds.length);
-    profile.eggLegacy.poolSize    = Math.min(3,    (profile.eggLegacy.poolSize||0)+0.08*state.lostBirds.length);
-    profile.eggLegacy.traitQuality= Math.min(1.0,  (profile.eggLegacy.traitQuality||0)+0.01*state.lostBirds.length);
+  // Egg legacy — only real birds count toward legacy enrichment
+  const realLost = state.lostBirds.filter(b => !(b.id && b.id.startsWith('borb_')));
+  if (realLost.length>0) {
+    profile.eggLegacy.statBonus   = Math.min(0.20, (profile.eggLegacy.statBonus||0)+0.005*realLost.length);
+    profile.eggLegacy.poolSize    = Math.min(3,    (profile.eggLegacy.poolSize||0)+0.08*realLost.length);
+    profile.eggLegacy.traitQuality= Math.min(1.0,  (profile.eggLegacy.traitQuality||0)+0.01*realLost.length);
   }
 
   saveProfile();
@@ -2691,7 +3319,9 @@ function showDebrief() {
   if (titleEl) { titleEl.textContent=state.runSuccess?'RUN COMPLETE':'FLOCK DEFEATED'; titleEl.className='debrief-title'+(state.runSuccess?'':' failure'); }
 
   const metaEl = document.getElementById('debrief-meta');
-  if (metaEl) metaEl.textContent=`LEVEL ${state.currentLevel} · ${state.currentDifficulty.toUpperCase()}${dm>1?' · ×'+dm+' SCORE MULTIPLIER':''}`;
+  const stagesStr = state.stage >= 3 ? '3 BOSSES CLEARED' : `STAGE ${state.stage} · ${state.currentDifficulty.toUpperCase()}`;
+  const infiniteStr = state.infiniteLoop > 0 ? ` · LOOP ${state.infiniteLoop}` : '';
+  if (metaEl) metaEl.textContent=`${stagesStr}${infiniteStr}${dm>1?' · ×'+dm+' SCORE MULTIPLIER':''}`;
 
   document.getElementById('debrief-score').textContent=finalScore.toLocaleString();
 
@@ -2705,9 +3335,9 @@ function showDebrief() {
   if (statsEl) {
     statsEl.innerHTML=`
       <div class="stat-box"><div class="stat-val">${state.kills}</div><div class="stat-name">ENEMIES KILLED</div></div>
-      <div class="stat-box"><div class="stat-val">${survivors.length}/${state.birds.length}</div><div class="stat-name">BIRDS SURVIVING</div></div>
+      <div class="stat-box"><div class="stat-val">${survivors.filter(b=>!b.isBorb).length}/${state.birds.filter(b=>!b.isBorb).length}</div><div class="stat-name">BIRDS SURVIVING</div></div>
       <div class="stat-box"><div class="stat-val">${xp}</div><div class="stat-name">COMMANDER XP</div></div>
-      <div class="stat-box"><div class="stat-val">${scrap}</div><div class="stat-name">SCRAP EARNED</div></div>
+      <div class="stat-box"><div class="stat-val">${seed}</div><div class="stat-name">SEED EARNED${state.infiniteLoop>0?' ×'+loopBonus.toFixed(1):''}</div></div>
       ${plumes>0?`<div class="stat-box"><div class="stat-val">${plumes}</div><div class="stat-name">PLUMES EARNED</div></div>`:''}
       ${state.bossKilled?'<div class="stat-box boss-kill"><div class="stat-val">✓</div><div class="stat-name">BOSS DEFEATED</div></div>':''}
       <div class="stat-box"><div class="stat-val">${Math.round(state.runTime)}s</div><div class="stat-name">TIME SURVIVED</div></div>
@@ -2721,15 +3351,17 @@ function showDebrief() {
 
   const birdsEl=document.getElementById('debrief-birds');
   if (birdsEl) {
-    if (state.lostBirds.length===0) {
+    const realLostBirds = state.lostBirds.filter(b => !(b.id && b.id.startsWith('borb_')));
+    const realSurvivors = survivors.filter(b => !b.isBorb);
+    if (realLostBirds.length===0) {
       birdsEl.innerHTML='<p class="survivors-note">PERFECT RUN — No birds lost.</p>';
     } else {
-      const lostItems=state.lostBirds.map(b=>{
+      const lostItems=realLostBirds.map(b=>{
         const sp=SPECIES[b.species]; const mins=Math.floor(b.time/60); const secs=Math.floor(b.time%60).toString().padStart(2,'0');
         return `<div class="lost-bird"><div class="lost-bird-dot" style="background:${sp.color}44;border-color:${sp.color}88;"></div><span class="lost-bird-name">${b.name} <span style="color:${sp.color};">(${sp.label})</span></span><span class="lost-bird-time">${mins}:${secs}</span></div>`;
       }).join('');
-      const survivorLine=survivors.length>0?`<p class="survivors-note">SURVIVED: ${survivors.map(b=>b.name).join(', ')}</p>`:'';
-      birdsEl.innerHTML=`<h3>BIRDS LOST (${state.lostBirds.length})</h3>${lostItems}${survivorLine}`;
+      const survivorLine=realSurvivors.length>0?`<p class="survivors-note">SURVIVED: ${realSurvivors.map(b=>b.name).join(', ')}</p>`:'';
+      birdsEl.innerHTML=`<h3>BIRDS LOST (${realLostBirds.length})</h3>${lostItems}${survivorLine}`;
     }
   }
 
@@ -2738,17 +3370,18 @@ function showDebrief() {
 
 function buildEventLines(xpEarned, plumesEarned) {
   const lines=[];
-  if (state.lostBirds.length===0) {
+  const realLost = state.lostBirds.filter(b => !(b.id && b.id.startsWith('borb_')));
+  if (realLost.length===0) {
     lines.push(`<div class="event-line"><span class="hi">No casualties.</span> The flock held together.</div>`);
   } else {
-    const first=state.lostBirds[0]; const sp=SPECIES[first.species];
+    const first=realLost[0]; const sp=SPECIES[first.species];
     const mins=Math.floor(first.time/60); const secs=Math.floor(first.time%60).toString().padStart(2,'0');
     lines.push(`<div class="event-line">First loss: <span class="warn">${first.name}</span> (${sp.role}) fell at <span class="hi">${mins}:${secs}</span>.</div>`);
   }
 
   const anchor=state.birds.find(b=>b.species==='angry_honker');
   if (anchor&&!anchor.alive) lines.push(`<div class="event-line"><span class="danger">Anchor lost:</span> ${anchor.name} fell — morale took a cascade hit. Consider protecting the Anchor with a rotation card.</div>`);
-  if (state.bossKilled) lines.push(`<div class="event-line"><span class="hi">Boss defeated!</span> ${plumesEarned} Plumes earned.</div>`);
+  if (state.bossKilled) lines.push(`<div class="event-line"><span class="hi">Boss defeated!</span> ${plumesEarned} Plume${plumesEarned!==1?'s':''} earned.</div>`);
   else if (state.bossActive&&!state.bossKilled) lines.push(`<div class="event-line"><span class="warn">Boss survived.</span> Study its phase pattern — time your attacks to the exposed window.</div>`);
   if (state.moraleCollapse) lines.push(`<div class="event-line"><span class="danger">Morale collapsed.</span> Cards were ignored. Add a rally stance card or protect your Anchor.</div>`);
   if (state.stance==='aggressive') lines.push(`<div class="event-line">Run ended in <span class="warn">aggressive stance</span> — higher damage but flock absorbed more.</div>`);
@@ -2779,6 +3412,7 @@ function init() {
   canvas = document.getElementById('game-canvas');
   ctx    = canvas.getContext('2d');
   loadProfile();
+  loadBirdSprite();
   initState(false, false);
   buildHubUI();
   initCameraControls();

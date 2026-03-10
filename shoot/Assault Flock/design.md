@@ -236,6 +236,47 @@
   - Subtle airflow lines behind leading birds indicate slipstream.
   - Formation editor shows the current leader and next-in-rotation.
 
+#### 7.2 Statistical Evolution
+
+Birds gain experience during a run from combat. As a bird levels up, its core stats scale according to an exponential growth formula that makes high-level birds visually and tactically distinct from their fresh counterparts.
+
+**Leveling formula**
+
+Each scalable stat grows per level as:
+
+$$Stat_{level} = Stat_{base} \times (1 + GrowthRate_{effective})^{level - 1}$$
+
+Where *GrowthRate_effective* for a given stat is the base growth rate multiplied by the bird's inherited Growth Modifier for that stat:
+
+$$GrowthRate_{effective} = GrowthRate_{base} \times (1 + GrowthModifier_{stat})$$
+
+**Base growth rates per stat**
+
+| Stat | Base growth rate | Growth multiplier cap |
+|------|------------------|-----------------------|
+| HP | 0.08 (8% / level) | — |
+| Damage | 0.10 (10% / level) | — |
+| Speed | 0.05 (5% / level) | 2.0× max growth |
+| Attack Rate | 0.06 (6% / level) | 2.0× max growth |
+| Crit Chance | 0.04 (4% / level) | 2.5× max growth |
+
+**Level cap and XP thresholds**
+
+- Maximum level: **10**. The exponential curve is balanced against the level cap — a level 10 Danger Sparrow deals approximately 2.6× base damage, not enough to trivialise Hard/Brutal enemy HP pools.
+- XP required to advance from level *n* to *n+1*: `floor(50 × 1.4^(n-1))`. Levels accelerate: Level 1→2 costs 50 XP, Level 9→10 costs ~643 XP.
+- XP sources during a run: 0.2 XP per point of damage dealt to enemies, 0.3 XP per point of damage dealt to a boss (boss XP bonus), 0.1 XP per point of damage absorbed (learning from pain).
+
+**Visual escalation**
+
+Stat growth has deliberate visual feedback so the player can see progression mid-run:
+- **Projectile density and size**: ranged bird projectile radius scales as `base_r × (1 + 0.06 × (level − 1))`, reaching ~1.54× base at level 10. A Feathered Loiterer at level 10 fills the screen with visibly fatter pellets.
+- **Attack speed**: `atkRate` growth increases fire rate directly. A Feathered Loiterer at level 10 fires up to 2× faster with the growth rate cap, producing distinctly denser fire patterns.
+- **Movement snappiness**: `spd` growth makes high-level birds snap into formation faster, execute peel attacks more rapidly, and return to slot in noticeably less time.
+
+**Level-up VFX**
+
+On level-up, the bird emits a gold "LEVEL UP!" floating text label (larger than the standard "Cra Caw!" text) and a brief flash. This is the only mid-run notification the player receives for leveling — it is intentionally brief to avoid interrupting the spectator experience.
+
 ---
 
 ### 8. Call cards
@@ -382,6 +423,40 @@
   - First run: 8 birds (2 Danger Sparrows, 2 Feathered Loiterers, 1 Goth Chicken, 1 Angry Honker, 1 Wise Old Bird, 1 Beach Screamer), 2 basic IF/THEN call cards, Flying V formation.
   - This loadout is functional enough to survive Level 1 Normal with attentive card configuration, but will not carry the player far without iteration.
 
+#### 10.2 The Genetic Nest
+
+The **Genetic Nest** is a hidden sub-layer of the egg inheritance system where death has lasting evolutionary consequences. While the existing egg legacy system tracks aggregate statistics across all fallen birds (statBonus, poolSize, traitQuality), the Genetic Nest operates at the species level: the specific strengths a bird developed during its life are passed forward to the next generation of that species.
+
+**Death and the Growth Buff**
+
+When a bird dies in combat, the game evaluates its statistical evolution: it identifies which stat grew the most relative to the species baseline (the *dominant stat*), then records a **Growth Buff** tied to that species and stat. This buff increases the Growth Modifier for that stat in all future recruits of that species — meaning their stats scale faster with each level gained mid-run.
+
+- If no Growth Buff exists for that species/stat combination, a new one is created at +10% modifier.
+- If a Growth Buff already exists for that species/stat combination, it compounds: `modifier × 1.2`, capped at +50%.
+
+**Compound inheritance example (Danger Sparrow, Damage)**
+
+| Generation | Event | Modifier |
+|------------|-------|----------|
+| 1 | Rex dies; dominant stat was Damage | New buff created: +10% |
+| 2 | Blaze recruited; inherits +10% Damage growth modifier. Blaze dies; dominant stat still Damage | Buff compounds to +12% |
+| 3 | Next Danger Sparrow recruit inherits +12% Damage growth modifier | — |
+| 4 | That bird dies with Damage dominant | Buff compounds to +14.4% |
+
+After ~8 Danger Sparrow deaths with Damage dominant, the modifier reaches the +50% cap. At that point, a level 10 Danger Sparrow deals approximately 4.0× base damage — a lineage effect that feels earned, not handed out.
+
+**Species specificity**
+
+Growth Buffs are species-specific. Angry Honker deaths accumulate Angry Honker buffs; Goth Chicken deaths accumulate Goth Chicken buffs. A player who runs many Danger Sparrows will create a bloodline of elite striker lineages while their Wise Old Bird bloodline stays fresh. Recruiting a new species starts from scratch until their first combat death occurs.
+
+**Player legibility**
+
+The Genetic Nest is intentionally invisible as a named mechanic. The player perceives it as: "my birds seem to be getting better the longer I play." The Nest tab does not expose modifier numbers. The design intent is a sense of organic improvement over many runs, not a spreadsheet to min-max. The debrief screen may note "This bloodline is strengthening" when a significant compound threshold is crossed.
+
+**Persistence and save compatibility**
+
+Growth Buffs are stored as part of the commander profile (`geneticBuffs` array) and persist across all sessions. They are reset only if the player manually wipes their save. Because buffs compound multiplicatively from a small base, long-running profiles develop measurably superior recruit pools without rendering fresh starts irrelevant — the buff affects *growth rate*, not *base stats*, so a level 1 buffed bird and an unbuffed bird are identical; divergence only appears mid-run.
+
 ---
 
 ### 11. Player experience flow
@@ -413,6 +488,28 @@
   - Key event callouts: "Your Anchor (Gerald the Angry Honker) died at 0:42 to Flak Balloon AoE." — enough information to prompt iteration without a full replay system.
   - **On success**: "Next Level" button auto-queues the next level in the run sequence. "Return to HQ" also available.
   - **On failure**: "Instant Retry" button (same loadout, one button, zero friction) and "Return to HQ" button.
+
+#### 11.1 Player Recovery Protocols
+
+The following systems exist to eliminate all "unplayable" states — conditions where the player has no valid action available due to an empty roster, zero Scrap, or a dead-end progression.
+
+- **The Clueless Borb (Formation Filler)**
+  - A zero-cost, infinite-use placeholder bird available at any time from the Roster tab via the "FIELD A BORB (FREE)" button.
+  - Borbs fill empty active roster slots when the player has no recruits left and cannot afford the Nest. Up to 12 Borbs can be fielded simultaneously.
+  - **Species profile**: `clueless_borb` — HP 30, DMG 4, SPD 1.0, rapid ranged. Color: grey-lavender (`#9090aa`). Role: Filler.
+  - **Trait — Clueless** (negative): After each shot, a random delay (0–0.6s) is added to the attack cooldown. Borbs fight, but erratically.
+  - **Non-persistence**: Borbs are not named individuals. When a Borb dies in combat it is silently removed from the active roster — it does not enter the Hall of Feathers, does not contribute to Egg Legacy enrichment, and no Commander XP is spent on it. A new Borb can be fielded for free before the next run.
+  - **UI placement**: Roster tab, below all real bird cards. The "FIELD A BORB" button is always visible when `activeRoster.length < 12`. Individual Borbs show a "REMOVE" button in place of the RELEASE/sell button.
+  - **Design intent**: Borbs are a graceful-exit valve, not a strategy. Their weakness is intentional — they communicate to the player that something has gone wrong and the correct fix is to recruit real birds. They exist so the player can always press LAUNCH RUN.
+
+- **Abandon Territory (Hard Reset)**
+  - A "ABANDON TERRITORY" button in the Aviary HQ footer, styled as a low-profile danger action (ghost red border, subdued color) to avoid accidental activation.
+  - Clicking the button opens a two-step confirmation modal: "ABANDON TERRITORY?" with body copy reading: *"All birds, Seed, Plumes, and Commander XP will be forgotten. The flock will be disbanded. The territory will be lost. This cannot be undone."*
+  - The modal offers two actions: **STAY** (dismiss, no action) and **ABANDON EVERYTHING** (execute wipe).
+  - **What is wiped**: all `localStorage` keys `af_save_v5`, `af_save_v4`, `af_save_v3` are removed. `commanderXp`, `seed`, `plumes`, `hallOfFeathers`, `nestPool`, `eggLegacy`, `geneticBuffs`, `personalBests`, and `runCount` are all zeroed/reset to defaults. The Hall of Feathers is cleared.
+  - **Post-reset state**: The page reloads to a fresh `defaultProfile()` — starter flock (Rex, Blaze, Pidge, Coo, Mortimer, Gerald, Archie, Sandy), 150 Seed, 0 Commander XP, 0 Plumes, Flying V formation. Identical to first launch.
+  - **Naming rationale**: "Abandon Territory" is used rather than "Delete Save" to maintain thematic immersion. The player is a commander relocating, not a developer erasing data.
+  - **Implementation**: `abandonTerritory()` in `game.js` handles the wipe, restores `defaultProfile()`, saves the clean state, and calls `location.reload()`.
 
 ---
 
