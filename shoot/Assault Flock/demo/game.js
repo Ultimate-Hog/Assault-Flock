@@ -2954,10 +2954,10 @@ function buildCallCardSlots() {
   }
 
   const defaults=[
-    {cond:'flock_hp_50',condOp:'and',cond2:'none',act:'loose_swarm',subset:'none'},
-    {cond:'enemy_drone',condOp:'and',cond2:'none',act:'aggressive',subset:'none'},
-    {cond:'birds_4',    condOp:'and',cond2:'none',act:'evasive',   subset:'none'},
-    {cond:'none',       condOp:'and',cond2:'none',act:'none',      subset:'none'},
+    {cond:'flock_hp_50',condOp:'and',cond2:'none',act:'loose_swarm',   subset:'none'},
+    {cond:'enemy_drone',condOp:'and',cond2:'none',act:'aggressive',    subset:'none'},
+    {cond:'birds_4',    condOp:'and',cond2:'none',act:'evasive',       subset:'none'},
+    {cond:'always',     condOp:'and',cond2:'none',act:'surge_forward', subset:'none'},
   ];
 
   container.innerHTML='';
@@ -3028,7 +3028,7 @@ function updateCardIndicators() {
 const BIRD_NAMES=['Pip','Beak','Claw','Wing','Talon','Gust','Storm','Ember','Sage','Echo','Flint','Haze','Rust','Gale','Dusk','Wick'];
 
 function generateRecruit() {
-  const spKeys = Object.keys(SPECIES);
+  const spKeys = Object.keys(SPECIES).filter(k => k !== 'clueless_borb');
   const sp     = spKeys[Math.floor(Math.random()*spKeys.length)];
   const name   = BIRD_NAMES[Math.floor(Math.random()*BIRD_NAMES.length)]+'-'+Math.floor(Math.random()*90+10);
   const traitKeys = Object.keys(TRAITS);
