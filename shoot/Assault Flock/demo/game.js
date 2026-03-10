@@ -1032,6 +1032,7 @@ function awardBirdXP(bird, amount) {
     bird.xp -= threshold;
     bird.level++;
     computeBirdStats(bird);
+    bird.hp = Math.min(bird.maxHp, bird.hp + bird.maxHp * 0.60);
     spawnFloatText(bird.x, bird.y - 28, 'LEVEL UP!', '#ffd700', 15);
     bird.flashTimer = Math.max(bird.flashTimer, 0.35);
   }
@@ -1958,7 +1959,6 @@ function update(dt) {
   updateFloatTexts(dt);
   updateCamera();
 
-  state.score += 8 * dt;
   updateHUD();
 
   const allDead      = state.birds.every(b => !b.alive);
@@ -3035,8 +3035,8 @@ function generateRecruit() {
   // eggLegacy.traitQuality raises trait roll chance from 70% toward 95%
   const traitChance = Math.min(0.95, 0.70 + (profile.eggLegacy.traitQuality || 0) * 0.25);
   const traits = Math.random() < traitChance ? [traitKeys[Math.floor(Math.random()*traitKeys.length)]] : [];
-  const baseCost = ({danger_sparrow:100,angry_honker:120,wise_old_bird:110,goth_chicken:80,beach_screamer:75,feathered_loiter:55})[sp]||60;
-  const tBonus   = traits.some(t=>TRAITS[t]?.type==='positive')?30:0;
+  const baseCost = ({danger_sparrow:35,angry_honker:40,wise_old_bird:35,goth_chicken:30,beach_screamer:25,feathered_loiter:20})[sp]||25;
+  const tBonus   = traits.some(t=>TRAITS[t]?.type==='positive')?10:0;
   // eggLegacy.statBonus applies a flat multiplier to base recruit stats (reflected in cost as a premium)
   const statMult = 1 + (profile.eggLegacy.statBonus || 0);
   const costMult = statMult > 1 ? Math.round((statMult - 1) * baseCost * 0.5) : 0;
@@ -3054,7 +3054,7 @@ function generateRecruit() {
 }
 
 function refreshNestPool(force) {
-  const cost = 50 + (profile.nestRefreshCount||0)*30;
+  const cost = 20 + (profile.nestRefreshCount||0)*15;
   if (!force) {
     if (profile.seed < cost) return;
     profile.seed -= cost;
@@ -3073,7 +3073,7 @@ function buildNestTab() {
   container.innerHTML='';
   if (profile.nestPool.length===0) { refreshNestPool(true); return; }
 
-  const refreshCost = 50+(profile.nestRefreshCount||0)*30;
+  const refreshCost = 20+(profile.nestRefreshCount||0)*15;
   const rc = document.getElementById('refresh-cost');
   if (rc) rc.textContent=`(${refreshCost} SEED)`;
   const nr = document.getElementById('nest-roster-count');
@@ -3128,7 +3128,7 @@ function buildNestTab() {
   });
 
   // Pity system: if roster is empty and seed < cheapest recruit, offer a free Feathered Loiterer
-  const FL_RECRUIT_COST = 55;
+  const FL_RECRUIT_COST = 20;
   if (profile.seed < FL_RECRUIT_COST && profile.roster.length === 0) {
     const pitySp = SPECIES['feathered_loiter'];
     const pityCard = document.createElement('div');
