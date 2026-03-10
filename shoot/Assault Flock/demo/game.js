@@ -1533,7 +1533,14 @@ function updateEnemies(dt) {
           dist(e.x, e.y, b.x, b.y) < dist(e.x, e.y, best.x, best.y) ? b : best);
         const d   = dist(e.x, e.y, target.x, target.y);
         const spd = 1.8 * dt * 60;
-        if (d > 4) { e.x += (target.x - e.x) / d * spd; e.y += (target.y - e.y) / d * spd; }
+        const minDistDrone = BIRD_R + ENEMY_R;
+        if (d > minDistDrone) {
+          e.x += (target.x - e.x) / d * spd;
+          e.y += (target.y - e.y) / d * spd;
+        } else if (d > 2) {
+          e.x -= (target.x - e.x) / d * spd * 0.5;
+          e.y -= (target.y - e.y) / d * spd * 0.5;
+        }
         e.atkCooldown -= dt;
         if (e.atkCooldown <= 0 && d < 75) {
           fireProj(e.x, e.y, target.x, target.y, 9, 'enemy', '#cc7030');
@@ -1550,7 +1557,14 @@ function updateEnemies(dt) {
       if (leader) {
         const d   = dist(e.x, e.y, leader.x, leader.y);
         const spd = 1.5 * dt * 60;
-        if (d > 4) { e.x += (leader.x - e.x) / d * spd; e.y += (leader.y - e.y) / d * spd; }
+        const minDistSparrow = BIRD_R + ENEMY_R;
+        if (d > minDistSparrow) {
+          e.x += (leader.x - e.x) / d * spd;
+          e.y += (leader.y - e.y) / d * spd;
+        } else if (d > 2) {
+          e.x -= (leader.x - e.x) / d * spd * 0.5;
+          e.y -= (leader.y - e.y) / d * spd * 0.5;
+        }
         e.atkCooldown -= dt;
         if (e.atkCooldown <= 0 && d < 90) {
           fireProj(e.x, e.y, leader.x, leader.y, 18, 'enemy', '#cc3070');
