@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assault Flock — Demo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════
+       HUB SCREEN
+       ═══════════════════════════════════ -->
+  <div id="screen-hub" class="screen">
+    <header class="hub-header">
+      <h1 class="game-title">ASSAULT FLOCK</h1>
+      <p class="hub-subtitle">AVIARY HQ — CONFIGURE YOUR FLOCK</p>
+    </header>
+
+    <div class="hub-layout">
+
+      <!-- Roster panel -->
+      <section class="hub-roster">
+        <h2 class="section-title">ROSTER  <span class="dim">8 BIRDS</span></h2>
+        <div id="roster-list"></div>
+      </section>
+
+      <!-- Config panel -->
+      <aside class="hub-config">
+
+        <div class="config-block">
+          <h2 class="section-title">FORMATION</h2>
+          <div class="formation-btns">
+            <button class="formation-btn active" data-formation="flying_v">FLYING V</button>
+            <button class="formation-btn" data-formation="loose_swarm">LOOSE SWARM</button>
+          </div>
+          <p class="formation-desc" id="formation-desc">Classic wedge. Slipstream bonus for trailing birds. Leader tires faster. Weak to flanking.</p>
+        </div>
+
+        <div class="config-block">
+          <h2 class="section-title">CALL CARDS  <span class="dim">3 SLOTS — PRIORITY ORDER</span></h2>
+          <p class="config-hint">First matching card fires each tick. Configure, then commit — no mid-run input.</p>
+          <div id="call-card-slots"></div>
+        </div>
+
+        <div class="config-block launch-block">
+          <button id="launch-btn" class="launch-btn">▶  LAUNCH RUN</button>
+          <p class="launch-note">Zero input during run. You are an observer. Victory comes from preparation.</p>
+        </div>
+
+      </aside>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       BATTLE SCREEN
+       ═══════════════════════════════════ -->
+  <div id="screen-battle" class="screen">
+    <div class="canvas-container">
+      <canvas id="game-canvas" width="600" height="700"></canvas>
+      <div id="battle-overlay">
+
+        <div id="battle-top-hud">
+          <div id="hud-left">
+            <div class="hud-label">FLOCK HP</div>
+            <div class="hud-bar-track">
+              <div id="hud-hp-bar" class="hud-bar hp-bar"></div>
+            </div>
+            <div class="hud-label" id="hud-bird-count"></div>
+          </div>
+          <div id="hud-center">
+            <div id="hud-score">SCORE: 000000</div>
+            <div id="hud-timer">1:30</div>
+          </div>
+          <div id="hud-right">
+            <div id="hud-formation">FLYING V</div>
+            <div id="hud-stance">NORMAL</div>
+            <div id="hud-kills" class="hud-label">0 KILLS</div>
+          </div>
+        </div>
+
+        <div id="battle-card-hud">
+          <div class="card-indicator" id="card-ind-0"><span class="card-ind-num">1</span><span class="card-ind-label">—</span></div>
+          <div class="card-indicator" id="card-ind-1"><span class="card-ind-num">2</span><span class="card-ind-label">—</span></div>
+          <div class="card-indicator" id="card-ind-2"><span class="card-ind-num">3</span><span class="card-ind-label">—</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       DEBRIEF SCREEN
+       ═══════════════════════════════════ -->
+  <div id="screen-debrief" class="screen">
+    <div class="debrief-container">
+      <h1 class="debrief-title" id="debrief-outcome">RUN COMPLETE</h1>
+      <div class="debrief-score-big" id="debrief-score">0</div>
+      <div class="debrief-label">FINAL SCORE</div>
+
+      <div class="debrief-stats" id="debrief-stats"></div>
+      <div class="debrief-events" id="debrief-events"></div>
+      <div class="debrief-birds" id="debrief-birds"></div>
+
+      <div class="debrief-actions">
+        <button id="retry-btn" class="action-btn primary-btn">⟳  INSTANT RETRY</button>
+        <button id="hub-btn"   class="action-btn secondary-btn">⌂  RETURN TO HQ</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
