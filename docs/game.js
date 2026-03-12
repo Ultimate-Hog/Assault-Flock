@@ -1,4 +1,4 @@
-'use strict';
+ 'use strict';
 
 // ════════════════════════════════════════════════
 // CONSTANTS
@@ -17,6 +17,12 @@ const ENEMY_R           = 11;
 const PROJ_R            = 3;
 const BIRD_ICON         = '^';    // Central icon used for all bird canvas/UI visuals
 const MELEE_RANGE_MULT  = 1.35;   // Global melee engagement radius multiplier
+const PECK_BASE_TIMER   = 1.5;
+const PECK_SPD_SCALE    = 1.0;
+const PECK_MIN_COOLDOWN = 0.1;
+const PECK_MAX_COOLDOWN = 2.0;
+const PECK_GOTH_MULT    = 0.7;
+const PECK_CHARGE_MULT  = 1.8;
 
 const UNLOCK = {
   SPREAD_LINE:    100,
@@ -157,112 +163,23 @@ const BOSS_POOL = {
   d: { name:'HIGH PERCH',     hp:750, color:'#308050', desc:'Leader sniper. Rotate before shots connect.' },
 };
 
+const MINI_BOSS_POOL = {
+  turret:  { name:'TURRET OVERLORD', hp:280, color:'#c07030', desc:'Armored turret, spread shot.', pattern:'spread' },
+  sparrow: { name:'SPARROW ALPHA',   hp:260, color:'#e08040', desc:'Fast, charges at leader.', pattern:'charge' },
+  flak:    { name:'FLAK CAPTAIN',    hp:320, color:'#8060a0', desc:'AoE burst pattern.', pattern:'burst' },
+};
+
 // ════════════════════════════════════════════════
 // SPAWN SCHEDULES
 // ════════════════════════════════════════════════
 
-function buildScheduleLevel1() {
-  const s = [];
-  for (let t = 4; t <= 25; t += 6) {
-    const n = Math.min(2 + Math.floor(t / 8), 5);
-    for (let i = 0; i < n; i++) s.push({ time: t + i * 0.6, type: 'drone' });
-  }
-  for (let t = 12; t <= 55; t += 11) {
-    s.push({ time: t, type: 'turret' });
-    s.push({ time: t + 2, type: 'turret' });
-  }
-  for (let t = 30; t <= 62; t += 9) {
-    s.push({ time: t, type: 'sparrow' });
-    s.push({ time: t + 2.5, type: 'sparrow' });
-  }
-  for (let t = 42; t <= 62; t += 13) {
-    s.push({ time: t, type: 'sniper' });
-  }
-  for (let t = 15; t <= 58; t += 20) {
-    s.push({ time: t, type: 'hazard_glare' });
-  }
-  return s.sort((a, b) => a.time - b.time);
-}
-
-function buildScheduleLevel2() {
-  const s = [];
-  for (let t = 4; t <= 60; t += 7) {
-    s.push({ time: t, type: 'sparrow' });
-    s.push({ time: t + 2, type: 'sparrow' });
-  }
-  for (let t = 8; t <= 55; t += 10) {
-    s.push({ time: t, type: 'flak' });
-  }
-  for (let t = 20; t <= 60; t += 10) {
-    s.push({ time: t, type: 'sniper' });
-    s.push({ time: t + 3, type: 'sniper' });
-  }
-  for (let t = 18; t <= 55; t += 16) {
-    s.push({ time: t, type: 'turret' });
-  }
-  for (let t = 10; t <= 60; t += 13) {
-    s.push({ time: t, type: 'hazard_turbine' });
-  }
-  for (let t = 6; t <= 58; t += 15) {
-    s.push({ time: t, type: 'hazard_updraft' });
-  }
-  for (let t = 25; t <= 60; t += 18) {
-    s.push({ time: t, type: 'hazard_crosswind' });
-  }
-  return s.sort((a, b) => a.time - b.time);
-}
-
-function buildScheduleLevel3() {
-  const s = [];
-  // Heavy sparrow pairs every 5s
-  for (let t = 3; t <= 62; t += 5) {
-    s.push({ time: t,     type: 'sparrow' });
-    s.push({ time: t + 1, type: 'sparrow' });
-  }
-  // Continuous drone waves
-  for (let t = 4; t <= 60; t += 6) {
-    const n = Math.min(3 + Math.floor(t / 10), 6);
-    for (let i = 0; i < n; i++) s.push({ time: t + i * 0.5, type: 'drone' });
-  }
-  // Sniper pairs every 8s
-  for (let t = 10; t <= 60; t += 8) {
-    s.push({ time: t,     type: 'sniper' });
-    s.push({ time: t + 2, type: 'sniper' });
-  }
-  // Flak every 8s
-  for (let t = 8; t <= 58; t += 8) {
-    s.push({ time: t, type: 'flak' });
-  }
-  // Turrets every 12s
-  for (let t = 12; t <= 55; t += 12) {
-    s.push({ time: t, type: 'turret' });
-    s.push({ time: t + 2, type: 'turret' });
-  }
-  // Environmental hazards — all types
-  for (let t = 5; t <= 55; t += 12)  s.push({ time: t, type: 'hazard_turbine' });
-  for (let t = 8; t <= 58; t += 14)  s.push({ time: t, type: 'hazard_updraft' });
-  for (let t = 15; t <= 60; t += 18) s.push({ time: t, type: 'hazard_crosswind' });
-  for (let t = 10; t <= 50; t += 20) s.push({ time: t, type: 'hazard_glare' });
-  return s.sort((a, b) => a.time - b.time);
-}
-
-function buildSchedule(level, difficulty) {
-  const base = level === 3 ? buildScheduleLevel3() : level === 2 ? buildScheduleLevel2() : buildScheduleLevel1();
-  if (difficulty === 'normal') return base;
-  const extra = [];
-  base.forEach(ev => {
-    if (!ev.type.startsWith('hazard') && Math.random() < (difficulty === 'brutal' ? 0.6 : 0.3)) {
-      extra.push({ time: ev.time + 1 + Math.random() * 3, type: ev.type });
-    }
-  });
-  return [...base, ...extra].sort((a, b) => a.time - b.time);
-}
+// legacy spawn schedule functions removed in favor of scripted waves
 
 // ════════════════════════════════════════════════
 // SAVE / LOAD  (localStorage)
 // ════════════════════════════════════════════════
 
-const SAVE_KEY = 'af_save_v5';
+const SAVE_KEY = 'af_save_v6';
 
 const STARTER_BIRDS = [
   { id:'s0', name:'Rex',      species:'danger_sparrow',   traits:['Reckless'],        xp:0, runsSurvived:0, growthModifiers:{} },
@@ -292,6 +209,7 @@ function defaultProfile() {
     selectedFormation:    'flying_v',
     runCount:             0,
     infiniteMode:         false,
+    hardcoreMode:         false,
   };
 }
 
@@ -302,7 +220,7 @@ function saveProfile() {
 }
 
 function abandonTerritory() {
-  ['af_save_v5', 'af_save_v4', 'af_save_v3'].forEach(k => {
+  ['af_save_v6', 'af_save_v5', 'af_save_v4', 'af_save_v3'].forEach(k => {
     try { localStorage.removeItem(k); } catch(e) { /* offline */ }
   });
   profile = defaultProfile();
@@ -333,13 +251,23 @@ function loadProfile() {
       localStorage.removeItem('af_save_v4');
     }
   } catch(e) { /* ignore migration errors */ }
+  // One-time migration: v5 → v6 (add hardcoreMode)
+  try {
+    const v5Raw = localStorage.getItem('af_save_v5');
+    if (v5Raw) {
+      const old = JSON.parse(v5Raw);
+      if (old.hardcoreMode === undefined) old.hardcoreMode = false;
+      localStorage.setItem('af_save_v6', JSON.stringify(old));
+      localStorage.removeItem('af_save_v5');
+    }
+  } catch(e) { /* ignore migration errors */ }
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
       const loaded = JSON.parse(raw);
-      // Ensure new fields exist even on partially-old saves
       if (!loaded.geneticBuffs) loaded.geneticBuffs = [];
       if (loaded.roster) loaded.roster.forEach(b => { if (!b.growthModifiers) b.growthModifiers = {}; });
+      if (loaded.hardcoreMode === undefined) loaded.hardcoreMode = false;
       profile = Object.assign(defaultProfile(), loaded);
     }
   } catch(e) { profile = defaultProfile(); }
@@ -350,6 +278,286 @@ function loadProfile() {
 // ════════════════════════════════════════════════
 
 let state = {};
+
+// ════════════════════════════════════════════════
+// MCP DEBUG BRIDGE (WebSocket)
+// ════════════════════════════════════════════════
+//
+// Optional bridge used by the Assault Flock MCP server.
+// If the MCP server is not running, connection failures are ignored.
+let mcpDebugSocket = null;
+let mcpDebugTimer  = 0;
+let mcpDebugIntervalId = null;
+
+function initMcpDebugSocket() {
+  if (typeof WebSocket === 'undefined') return;
+  // Already connected or connecting
+  if (mcpDebugSocket && mcpDebugSocket.readyState === 1 /* OPEN */) return;
+  try {
+    const sock = new WebSocket('ws://localhost:8089');
+    mcpDebugSocket = sock;
+
+    sock.onclose = () => {
+      mcpDebugSocket = null;
+    };
+
+    sock.onerror = () => {
+      // Ignore errors; never surface them to the player.
+    };
+
+    sock.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'command') {
+          const ok = handleMcpCommand(msg);
+          if (msg.requestId) {
+            sock.send(JSON.stringify({
+              type: 'command_ack',
+              requestId: msg.requestId,
+              success: !!ok,
+            }));
+          }
+        }
+      } catch (e) {
+        // Ignore malformed messages.
+      }
+    };
+  } catch (e) {
+    mcpDebugSocket = null;
+  }
+}
+
+function startMcpDebugPump() {
+  if (typeof window === 'undefined') return;
+  if (mcpDebugIntervalId != null) return;
+  // Use a fixed timestep (~0.5s) so pumpMcpDebug's internal timer still works.
+  mcpDebugIntervalId = window.setInterval(() => {
+    try {
+      pumpMcpDebug(0.5);
+    } catch (e) {
+      // Never let debug transport failures affect gameplay.
+    }
+  }, 500);
+}
+
+function handleMcpCommand(cmd) {
+  const action = cmd.action;
+  if (!action) return false;
+  let handled = false;
+
+  if (action === 'spawn_enemy' && cmd.enemyType) {
+    spawnEnemy(String(cmd.enemyType), {});
+    handled = true;
+  } else if (action === 'trigger_boss') {
+    if (!state.bossTriggered && !state.bossActive) {
+      state.bossTriggered = true;
+      spawnBoss();
+      state.bossActive = true;
+      handled = true;
+    }
+  } else if (action === 'set_speed' && typeof cmd.multiplier === 'number') {
+    state.bgScrollSpeed = 55 * cmd.multiplier;
+    handled = true;
+  } else if (action === 'set_formation' && typeof cmd.formation === 'string') {
+    triggerFormationChange(cmd.formation);
+    handled = true;
+  } else if (action === 'navigate' && typeof cmd.screen === 'string') {
+    if (cmd.screen === 'hub' || cmd.screen === 'level-select') {
+      showScreen(cmd.screen);
+      if (cmd.screen === 'hub') buildHubUI();
+      handled = true;
+    }
+  } else if (action === 'select_tab' && typeof cmd.tab === 'string') {
+    const tabBtn = document.querySelector(`.hub-tab[data-tab="${cmd.tab}"]`);
+    if (tabBtn) {
+      tabBtn.dispatchEvent(new MouseEvent('click', { bubbles:true }));
+      handled = true;
+    }
+  } else if (action === 'select_formation' && typeof cmd.formation === 'string') {
+    const btn = document.querySelector(`.formation-btn[data-formation="${cmd.formation}"]`);
+    if (btn) {
+      btn.dispatchEvent(new MouseEvent('click', { bubbles:true }));
+      handled = true;
+    }
+  } else if (action === 'set_difficulty' && typeof cmd.difficulty === 'string') {
+    const btn = document.querySelector(`.difficulty-btn[data-difficulty="${cmd.difficulty}"]`);
+    if (btn && !btn.classList.contains('locked')) {
+      btn.dispatchEvent(new MouseEvent('click', { bubbles:true }));
+      handled = true;
+    }
+  } else if (action === 'launch_run') {
+    startRun();
+    handled = true;
+  } else if (action === 'retry_run') {
+    retryRun();
+    handled = true;
+  } else if (action === 'return_to_hub') {
+    showScreen('hub');
+    buildHubUI();
+    handled = true;
+  } else if (action === 'recruit_bird' && typeof cmd.recruitId === 'string') {
+    const recruit = profile.nestPool.find(r => r.id === cmd.recruitId);
+    if (!recruit) return false;
+    const cost = recruit.cost;
+    const full = profile.roster.length >= 12;
+    if (full || profile.seed < cost) return false;
+    profile.seed -= cost;
+    const newBird = {
+      id: recruit.id,
+      name: recruit.name,
+      species: recruit.species,
+      traits: recruit.traits || [],
+      xp: 0,
+      runsSurvived: 0,
+      cost: recruit.cost,
+      growthModifiers: recruit.growthModifiers || {},
+      statMult: recruit.statMult || 1,
+    };
+    profile.roster.push(newBird);
+    profile.activeRoster.push(newBird.id);
+    profile.nestPool = profile.nestPool.filter(r => r.id !== recruit.id);
+    saveProfile();
+    buildNestTab();
+    buildRosterList();
+    buildFormationTab();
+    buildCurrencyDisplay();
+    handled = true;
+  } else if (action === 'release_bird' && typeof cmd.birdId === 'string') {
+    releaseBird(cmd.birdId);
+    handled = true;
+  } else if (action === 'refresh_nest') {
+    refreshNestPool(false);
+    handled = true;
+  } else if (action === 'set_call_card' && typeof cmd.slot === 'number') {
+    const i = cmd.slot;
+    if (i < 0 || i >= getCardSlotCount()) return false;
+    if (typeof cmd.condition === 'string') {
+      const condEl = document.getElementById(`card-cond-${i}`);
+      if (condEl) condEl.value = cmd.condition;
+    }
+    if (typeof cmd.condition2 === 'string') {
+      const cond2El = document.getElementById(`card-cond2-${i}`);
+      if (cond2El) cond2El.value = cmd.condition2;
+    }
+    if (typeof cmd.condOp === 'string') {
+      const opEl = document.getElementById(`card-condop-${i}`);
+      if (opEl) opEl.value = cmd.condOp;
+    }
+    if (typeof cmd.action_name === 'string') {
+      const actEl = document.getElementById(`card-act-${i}`);
+      if (actEl) actEl.value = cmd.action_name;
+    }
+    handled = true;
+  } else if (action === 'assign_position' &&
+             typeof cmd.formation === 'string' &&
+             typeof cmd.slotIndex === 'number' &&
+             typeof cmd.birdId === 'string') {
+    const key = `${cmd.formation}_${cmd.slotIndex}`;
+    profile.positionAssignments[key] = cmd.birdId;
+    saveProfile();
+    buildFormationTab();
+    handled = true;
+  } else if (action === 'toggle_infinite') {
+    profile.infiniteMode = !profile.infiniteMode;
+    saveProfile();
+    handled = true;
+  } else if (action === 'abandon_territory') {
+    abandonTerritory();
+    handled = true;
+  }
+
+  return handled;
+}
+
+function pumpMcpDebug(dt) {
+  if (!mcpDebugSocket || mcpDebugSocket.readyState !== 1 /* OPEN */) return;
+  mcpDebugTimer += dt;
+  if (mcpDebugTimer < 0.5) return;
+  mcpDebugTimer = 0;
+
+  // Build a lightweight profile/menu snapshot for non-battle screens so tools
+  // can configure the flock and campaign from MCP.
+  const profileSummary = {
+    commanderXp:      profile.commanderXp,
+    seed:             profile.seed,
+    plumes:           profile.plumes,
+    hardcoreMode:     profile.hardcoreMode,
+    infiniteMode:     profile.infiniteMode,
+    runCount:         profile.runCount || 0,
+    selectedFormation: profile.selectedFormation,
+    activeRoster:     profile.activeRoster,
+    roster:           profile.roster.map(b => ({
+      id:      b.id,
+      name:    b.name,
+      species: b.species,
+      traits:  b.traits || [],
+      cost:    b.cost || 0,
+    })),
+    nestPool:         profile.nestPool.map(r => ({
+      id:      r.id,
+      name:    r.name,
+      species: r.species,
+      cost:    r.cost,
+      traits:  r.traits || [],
+    })),
+    geneticBuffs:     profile.geneticBuffs || [],
+    availableFormations: Object.keys(FORMATION_SLOT_NAMES).filter(f => isFormationUnlocked(f)),
+  };
+
+  const menuState = {
+    difficulty:      typeof selectedDifficulty === 'string' ? selectedDifficulty : state.currentDifficulty,
+    infiniteMode:    profile.infiniteMode || state.infiniteMode,
+    hardcoreMode:    profile.hardcoreMode,
+  };
+
+  try {
+    const activeGroups = {};
+    if (typeof waveController !== 'undefined' && waveController.activeGroups) {
+      waveController.activeGroups.forEach((val, key) => {
+        activeGroups[key] = val.ids ? val.ids.size : 0;
+      });
+    }
+    const payload = {
+      type: 'state',
+      data: {
+        screen: state.screen,
+        runTime: state.runTime,
+        score: state.score,
+        kills: state.kills,
+        morale: state.morale,
+        formation: state.formation,
+        stance: state.stance,
+        stage: state.stage,
+        currentLevel: state.currentLevel,
+        currentDifficulty: state.currentDifficulty,
+        bossTriggered: state.bossTriggered,
+        bossKilled: state.bossKilled,
+        profile: profileSummary,
+        menu: menuState,
+        birds: state.birds,
+        enemies: state.enemies,
+        hazards: state.hazards,
+        projectiles: state.projectiles,
+        boss: state.boss,
+        wave: typeof waveController !== 'undefined' ? {
+          scriptDone: waveController.scriptDone,
+          scriptDoneTime: waveController.scriptDoneTime,
+          waitTimer: waveController.waitTimer,
+          pendingCmd: waveController.pendingCmd ? {
+            type: waveController.pendingCmd.type,
+            groupId: waveController.pendingCmd.groupId,
+            count: waveController.pendingCmd.count,
+          } : null,
+          activeGroups,
+        } : {},
+      },
+    };
+    mcpDebugSocket.send(JSON.stringify(payload));
+  } catch (e) {
+    // Never let debug transport failures affect gameplay.
+  }
+}
+
 
 function buildRunFlock() {
   return profile.activeRoster.slice(0, 12).map((id, i) => {
@@ -374,6 +582,7 @@ function buildRunFlock() {
       formationSlot:   i,
       alive:           true,
       atkCooldown:     i * 0.25,
+      peckCooldown:    i * 0.25,
       healCooldown:    0,
       flashTimer:      0,
       slipstreamHot:   0,
@@ -480,8 +689,6 @@ function initState(keepCards, keepFormation) {
     focusTarget:       null,
     isReorganizing:    false,
     reorgTimer:        0,
-    spawnSchedule:     buildSchedule(1, diff),
-    nextSpawnIdx:      0,
     enemyId:           0,
     projId:            0,
     lostBirds:         [],
@@ -490,6 +697,7 @@ function initState(keepCards, keepFormation) {
     bossActive:        false,
     bossTriggered:     false,
     boss:              null,
+    miniBoss:          null,
     subflock:          [],
     crosswindX:        0,
     crosswindTimer:    0,
@@ -510,48 +718,74 @@ function initState(keepCards, keepFormation) {
 // ENEMY CREATION
 // ════════════════════════════════════════════════
 
-function spawnEnemy(type) {
-  const x  = 60 + Math.random() * (W - 120);
+function spawnEnemy(type, extra) {
+  const x  = extra?.x ?? (60 + Math.random() * (W - 120));
   const id = ++state.enemyId;
   const dm = state.diffMult;
+  let enemy = null;
 
   if (type === 'drone') {
-    state.enemies.push({ id, type:'drone',
-      hp:28*dm, maxHp:28*dm, x, y:-30,
+    enemy = {
+      id, type:'drone',
+      hp:48*dm, maxHp:48*dm, x, y:-30,
       vx:(Math.random()-0.5)*1.2, vy:1.4,
       alive:true, atkCooldown:0.8+Math.random(),
-      flashTimer:0, state:'idle' });
+      flashTimer:0, state:'idle',
+    };
 
   } else if (type === 'turret') {
-    state.enemies.push({ id, type:'turret',
-      hp:90*dm, maxHp:90*dm, x, y:-25,
+    enemy = {
+      id, type:'turret',
+      hp:130*dm, maxHp:130*dm, x, y:-25,
       vx:0, vy:0.35,
       alive:true, atkCooldown:2.0+Math.random()*1.5,
-      flashTimer:0, state:'idle' });
+      flashTimer:0, state:'idle',
+    };
 
   } else if (type === 'sparrow') {
-    state.enemies.push({ id, type:'sparrow',
-      hp:55*dm, maxHp:55*dm, x, y:-30,
+    enemy = {
+      id, type:'sparrow',
+      hp:85*dm, maxHp:85*dm, x, y:-30,
       vx:(Math.random()-0.5)*1.0, vy:0.9,
       alive:true, atkCooldown:1.5+Math.random(),
-      flashTimer:0, state:'idle' });
+      flashTimer:0, state:'idle',
+    };
 
   } else if (type === 'flak') {
-    state.enemies.push({ id, type:'flak',
-      hp:70*dm, maxHp:70*dm, x, y:-35,
+    enemy = {
+      id, type:'flak',
+      hp:110*dm, maxHp:110*dm, x, y:-35,
       vx:(Math.random()-0.5)*0.5, vy:0.25,
       alive:true, atkCooldown:3.5+Math.random()*3.0,
       chargeTimer:0, chargeRadius:0,
-      flashTimer:0, state:'idle' });
+      flashTimer:0, state:'idle',
+    };
 
   } else if (type === 'sniper') {
-    state.enemies.push({ id, type:'sniper',
-      hp:60*dm, maxHp:60*dm, x, y:-25,
+    enemy = {
+      id, type:'sniper',
+      hp:95*dm, maxHp:95*dm, x, y:-25,
       vx:0, vy:0.3,
       alive:true, atkCooldown:3.0,
       chargeTimer:0, targetBirdId:null,
-      flashTimer:0, state:'idle' });
+      flashTimer:0, state:'idle',
+    };
   }
+
+  if (!enemy) return null;
+
+  if (extra) {
+    if (extra.pathFn) {
+      enemy.pathFn = extra.pathFn;
+      enemy.pathTime = 0;
+      enemy.spawnX = extra.x != null ? extra.x : enemy.x;
+      enemy.spawnY = extra.y != null ? extra.y : enemy.y;
+    }
+    Object.assign(enemy, extra);
+  }
+
+  state.enemies.push(enemy);
+  return enemy;
 }
 
 function spawnHazard(type) {
@@ -574,6 +808,7 @@ function spawnHazard(type) {
 // ════════════════════════════════════════════════
 
 function spawnBoss() {
+  if (state.boss?.alive) return;
   const types = ['a','b','c','d'];
   const type  = state.bossForStage?.[state.stage] || types[Math.floor(Math.random() * types.length)];
   const data  = BOSS_POOL[type];
@@ -597,6 +832,32 @@ function spawnBoss() {
   };
   state.bossActive   = true;
   state.bossTriggered = true;
+}
+
+function spawnMiniBoss(type) {
+  const key = type in MINI_BOSS_POOL ? type : 'turret';
+  const data = MINI_BOSS_POOL[key];
+  const dm = state.diffMult;
+  const x = 80 + Math.random() * (W - 160);
+  state.miniBoss = {
+    type: key,
+    name: data.name,
+    color: data.color,
+    pattern: data.pattern || 'spread',
+    hp: data.hp * dm,
+    maxHp: data.hp * dm,
+    x, y: -50,
+    vx: (Math.random() - 0.5) * 0.6,
+    vy: 0.4,
+    alive: true,
+    atkCooldown: 2.0,
+    phase: 0,
+    phaseTimer: 0,
+    flashTimer: 0,
+    chargeTimer: 0,
+    debuffed: false,
+    debuffTimer: 0,
+  };
 }
 
 // ════════════════════════════════════════════════
@@ -638,6 +899,464 @@ function spawnFloatText(x, y, text, color, fontSize) {
     maxTimer: 1.2,
     fontSize: fontSize || 11,
   });
+}
+
+// ════════════════════════════════════════════════
+// WAVE CONTROLLER
+// ════════════════════════════════════════════════
+
+class WaveController {
+  constructor() {
+    this.levelScripts = {};
+    this.current = null;
+    this.ctx = null;
+    this.waitTimer = 0;
+    this.activeGroups = new Map();
+    this.scriptDone = false;
+    this.scriptDoneTime = 0;
+    this.pendingCmd = null;
+  }
+
+  registerLevel(key, scriptFn) {
+    this.levelScripts[key] = scriptFn;
+  }
+
+  startLevel(level, difficulty) {
+    const key = `${level}:${difficulty}`;
+    const scriptFn =
+      this.levelScripts[key] ||
+      this.levelScripts[`${level}:normal`] ||
+      null;
+    if (!scriptFn) {
+      this.current = null;
+      this.ctx = null;
+      this.waitTimer = 0;
+      this.activeGroups.clear();
+      this.scriptDone = false;
+      this.scriptDoneTime = 0;
+      this.pendingCmd = null;
+      return;
+    }
+    this.ctx = this.buildContext(level, difficulty);
+    this.current = scriptFn(this.ctx);
+    this.waitTimer = 0;
+    this.activeGroups.clear();
+    this.scriptDone = false;
+    this.scriptDoneTime = 0;
+    this.pendingCmd = null;
+  }
+
+  buildContext(level, difficulty) {
+    return {
+      level,
+      difficulty,
+      spawnGroup: (groupId, spawnFn) => {
+        const ids = [];
+        spawnFn((type, extra = {}) => {
+          const enemy = spawnEnemy(type, extra);
+          if (enemy && enemy.id != null) ids.push(enemy.id);
+        });
+        this.activeGroups.set(groupId, { ids: new Set(ids) });
+      },
+      isGroupCleared: (groupId) => {
+        const g = this.activeGroups.get(groupId);
+        return !g || g.ids.size === 0;
+      },
+      enemiesAlive: () => state.enemies.filter(e => e.alive).length,
+      waitSeconds: (seconds) => ({ type: 'wait', seconds }),
+      waitUntilGroupCleared: (groupId) => ({ type: 'waitGroup', groupId }),
+      waitUntilEnemiesBelow: (count) => ({ type: 'waitEnemies', count }),
+      triggerBoss: () => ({ type: 'boss' }),
+      triggerMiniBoss: (type) => ({ type: 'miniBoss', miniType: type }),
+      waitUntilMiniBossDead: () => ({ type: 'waitMiniBoss' }),
+      spawnHazard: (type) => { spawnHazard(type); },
+      text: (msg, color = '#ffffff') => ({ type: 'floatText', msg, color }),
+    };
+  }
+
+  markEnemyDead(enemyId) {
+    if (!enemyId) return;
+    for (const group of this.activeGroups.values()) {
+      group.ids.delete(enemyId);
+    }
+  }
+
+  tick(dt, runTime) {
+    if (!this.current) return;
+
+    if (this.waitTimer > 0) {
+      this.waitTimer -= dt;
+      if (this.waitTimer > 0) return;
+      this.waitTimer = 0;
+    }
+
+    // Re-check pending condition wait before advancing the generator
+    if (this.pendingCmd) {
+      const cmd = this.pendingCmd;
+      let conditionMet = false;
+      if (cmd.type === 'waitGroup') {
+        conditionMet = this.ctx.isGroupCleared(cmd.groupId);
+      } else if (cmd.type === 'waitEnemies') {
+        conditionMet = this.ctx.enemiesAlive() <= cmd.count;
+      } else if (cmd.type === 'waitMiniBoss') {
+        conditionMet = !state.miniBoss?.alive;
+      }
+      if (!conditionMet) return;
+      this.pendingCmd = null;
+      // Advance past the yield that produced this command
+      const step = this.current.next();
+      if (step.done) {
+        this.scriptDone = true;
+        this.scriptDoneTime = typeof runTime === 'number' ? runTime : 0;
+      }
+      return;
+    }
+
+    let step = this.current.next();
+    while (!step.done) {
+      const cmd = step.value;
+      if (!cmd) {
+        step = this.current.next();
+        continue;
+      }
+
+      if (cmd.type === 'wait') {
+        this.waitTimer = cmd.seconds;
+        return;
+      }
+      if (cmd.type === 'waitGroup') {
+        if (!this.ctx.isGroupCleared(cmd.groupId)) {
+          this.pendingCmd = cmd;
+          return;
+        }
+      } else if (cmd.type === 'waitEnemies') {
+        if (this.ctx.enemiesAlive() > cmd.count) {
+          this.pendingCmd = cmd;
+          return;
+        }
+      } else if (cmd.type === 'boss') {
+        spawnBoss();
+      } else if (cmd.type === 'miniBoss') {
+        spawnMiniBoss(cmd.miniType || 'turret');
+      } else if (cmd.type === 'waitMiniBoss') {
+        if (state.miniBoss?.alive) {
+          this.pendingCmd = cmd;
+          return;
+        }
+      } else if (cmd.type === 'hazard') {
+        spawnHazard(cmd.hazardType || 'hazard_glare');
+      } else if (cmd.type === 'floatText') {
+        spawnFloatText(W / 2, H / 2, cmd.msg, cmd.color);
+      }
+
+      step = this.current.next();
+    }
+
+    if (step.done) {
+      this.scriptDone = true;
+      this.scriptDoneTime = typeof runTime === 'number' ? runTime : 0;
+    }
+  }
+}
+
+const waveController = new WaveController();
+
+// ════════════════════════════════════════════════
+// WAVE SCRIPTS
+// ════════════════════════════════════════════════
+
+function* level1NormalScript(ctx) {
+  // Phase 1: Drone Introduction (0:00 - ~0:45)
+  yield ctx.text('DRONE SWARMS INCOMING', '#c0ff80');
+  yield ctx.waitSeconds(3);
+  for (let wave = 0; wave < 4; wave++) {
+    const groupId = `l1_drones_${wave}`;
+    ctx.spawnGroup(groupId, (spawn) => {
+      const count = 3 + wave * 2;
+      for (let i = 0; i < count; i++) spawn('drone', {});
+    });
+    yield ctx.waitSeconds(10);
+  }
+
+  // Phase 2: Sparrow Skirmish (~0:45 - ~1:25)
+  yield ctx.text('SPARROW SKIRMISH', '#8aaa50');
+  yield ctx.waitSeconds(2);
+  ctx.spawnHazard('hazard_crosswind');
+  for (let w = 0; w < 3; w++) {
+    const g = `l1_sparrows_${w}`;
+    ctx.spawnGroup(g, (spawn) => {
+      for (let i = 0; i < 4 + w; i++) spawn('sparrow', {});
+    });
+    yield ctx.waitSeconds(12);
+  }
+
+  // Phase 3: Mixed Assault (~1:25 - ~2:15)
+  yield ctx.text('MIXED ASSAULT', '#c0c0ff');
+  yield ctx.waitSeconds(2);
+  const mix1 = 'l1_mix1';
+  ctx.spawnGroup(mix1, (spawn) => {
+    for (let i = 0; i < 4; i++) spawn('sparrow', {});
+    for (let i = 0; i < 6; i++) spawn('drone', {});
+  });
+  yield ctx.waitUntilGroupCleared(mix1);
+  yield ctx.waitSeconds(6);
+  const mix2 = 'l1_mix2';
+  ctx.spawnGroup(mix2, (spawn) => {
+    for (let i = 0; i < 3; i++) spawn('sparrow', {});
+    for (let i = 0; i < 6; i++) spawn('drone', {});
+  });
+  yield ctx.waitUntilGroupCleared(mix2);
+
+  // Phase 4: Turret Corridor (~2:15 - ~3:00)
+  yield ctx.text('TURRET NESTS AHEAD', '#ffbf40');
+  yield ctx.waitSeconds(2);
+  const turretGroup = 'l1_turrets_main';
+  ctx.spawnGroup(turretGroup, (spawn) => {
+    for (let col = 0; col < 4; col++) spawn('turret', {});
+  });
+  yield ctx.waitUntilGroupCleared(turretGroup);
+
+  // Phase 5: Sniper Nest (~3:00)
+  yield ctx.text('SNIPER NEST', '#408050');
+  yield ctx.waitSeconds(2);
+  const sniperGroup = 'l1_snipers';
+  ctx.spawnGroup(sniperGroup, (spawn) => {
+    spawn('sniper', {}); spawn('sniper', {});
+    spawn('turret', {}); spawn('turret', {});
+  });
+  yield ctx.waitUntilGroupCleared(sniperGroup);
+
+  // First Mini-Boss at ~3:00+
+  yield ctx.text('TURRET OVERLORD', '#c07030');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerMiniBoss('turret');
+  yield ctx.waitUntilMiniBossDead();
+
+  // Phase 6: Escalation (~3:30 - ~4:00)
+  yield ctx.text('ESCALATION', '#c0a030');
+  yield ctx.waitSeconds(2);
+  ctx.spawnHazard('hazard_crosswind');
+  const esc1 = 'l1_esc1';
+  ctx.spawnGroup(esc1, (spawn) => {
+    for (let i = 0; i < 4; i++) spawn('drone', {});
+    for (let i = 0; i < 2; i++) spawn('sparrow', {});
+    spawn('flak', {});
+  });
+  yield ctx.waitSeconds(8);
+  const esc2 = 'l1_esc2';
+  ctx.spawnGroup(esc2, (spawn) => {
+    for (let i = 0; i < 3; i++) spawn('sparrow', {});
+    spawn('flak', {}); spawn('turret', {});
+  });
+  yield ctx.waitUntilGroupCleared(esc2);
+
+  // Second Mini-Boss (~4:00)
+  yield ctx.text('SPARROW ALPHA', '#e08040');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerMiniBoss('sparrow');
+  yield ctx.waitUntilMiniBossDead();
+
+  // Phase 8: Pre-boss gauntlet (~4:15 - ~4:30)
+  yield ctx.text('FINAL PUSH', '#ff8080');
+  yield ctx.waitSeconds(2);
+  const gauntlet = 'l1_gauntlet';
+  ctx.spawnGroup(gauntlet, (spawn) => {
+    for (let i = 0; i < 4; i++) spawn('drone', {});
+    for (let i = 0; i < 3; i++) spawn('sparrow', {});
+    spawn('turret', {}); spawn('flak', {});
+  });
+  yield ctx.waitUntilEnemiesBelow(4);
+  yield ctx.waitSeconds(2);
+  yield ctx.text('BOSS APPROACHING', '#ff8080');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerBoss();
+}
+
+function* level2NormalScript(ctx) {
+  // Phase 1: Canopy intro — drones + sparrows (~0:00 - ~1:00)
+  yield ctx.text('THE CANOPY', '#8aaa50');
+  yield ctx.waitSeconds(3);
+  for (let wave = 0; wave < 4; wave++) {
+    const groupId = `l2_intro_${wave}`;
+    ctx.spawnGroup(groupId, (spawn) => {
+      for (let i = 0; i < 2 + wave; i++) spawn('drone', {});
+      for (let i = 0; i < 2 + wave; i++) spawn('sparrow', {});
+    });
+    yield ctx.waitSeconds(12);
+  }
+
+  // Phase 2: Sparrow formations + glare (~1:00 - ~1:45)
+  yield ctx.text('SPARROW FORMATIONS', '#8aaa50');
+  yield ctx.waitSeconds(2);
+  for (let w = 0; w < 3; w++) {
+    ctx.spawnHazard('hazard_glare');
+    const g = `l2_sparrows_${w}`;
+    ctx.spawnGroup(g, (spawn) => {
+      for (let i = 0; i < 4 + w; i++) spawn('sparrow', {});
+    });
+    yield ctx.waitSeconds(12);
+  }
+
+  // Phase 3: Turret corridor (~1:45 - ~2:30)
+  yield ctx.text('TURRET NESTS', '#ffbf40');
+  yield ctx.waitSeconds(2);
+  const turretGroup = 'l2_turrets';
+  ctx.spawnGroup(turretGroup, (spawn) => {
+    for (let col = 0; col < 5; col++) spawn('turret', {});
+  });
+  yield ctx.waitUntilGroupCleared(turretGroup);
+
+  // Phase 4: Flak + turrets (~2:30 - ~3:00)
+  yield ctx.text('FLAK AND TURRETS', '#c0a030');
+  yield ctx.waitSeconds(2);
+  const flakGroup = 'l2_flak';
+  ctx.spawnGroup(flakGroup, (spawn) => {
+    spawn('flak', {}); spawn('flak', {});
+    spawn('turret', {}); spawn('turret', {});
+  });
+  yield ctx.waitUntilGroupCleared(flakGroup);
+
+  // First Mini-Boss at ~3:00
+  yield ctx.text('FLAK CAPTAIN', '#8060a0');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerMiniBoss('flak');
+  yield ctx.waitUntilMiniBossDead();
+
+  // Phase 5: Drone walls + turbines (~3:15 - ~3:55)
+  yield ctx.text('DRONE WALL', '#40c0b0');
+  yield ctx.waitSeconds(2);
+  ctx.spawnHazard('hazard_turbine');
+  const wall1 = 'l2_wall1';
+  ctx.spawnGroup(wall1, (spawn) => {
+    for (let i = 0; i < 8; i++) spawn('drone', {});
+  });
+  yield ctx.waitSeconds(10);
+  ctx.spawnHazard('hazard_turbine');
+  const wall2 = 'l2_wall2';
+  ctx.spawnGroup(wall2, (spawn) => {
+    for (let i = 0; i < 6; i++) spawn('drone', {});
+    spawn('turret', {}); spawn('turret', {});
+  });
+  yield ctx.waitUntilGroupCleared(wall2);
+
+  // Phase 6: Sniper cover (~3:55 - ~4:15)
+  yield ctx.text('SNIPER COVER', '#308050');
+  yield ctx.waitSeconds(2);
+  const nest = 'l2_nest';
+  ctx.spawnGroup(nest, (spawn) => {
+    spawn('sniper', {}); spawn('sniper', {});
+    spawn('flak', {}); spawn('turret', {});
+  });
+  yield ctx.waitUntilGroupCleared(nest);
+
+  // Second Mini-Boss (~4:15)
+  yield ctx.text('TURRET OVERLORD', '#c07030');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerMiniBoss('turret');
+  yield ctx.waitUntilMiniBossDead();
+
+  // Phase 7: Assault + updraft (~4:30 - ~5:00)
+  yield ctx.text('ASSAULT', '#ff8040');
+  yield ctx.waitSeconds(2);
+  ctx.spawnHazard('hazard_updraft');
+  const assault = 'l2_assault';
+  ctx.spawnGroup(assault, (spawn) => {
+    for (let i = 0; i < 4; i++) spawn('sparrow', {});
+    for (let i = 0; i < 4; i++) spawn('drone', {});
+    spawn('flak', {}); spawn('flak', {});
+  });
+  yield ctx.waitUntilEnemiesBelow(3);
+  yield ctx.waitSeconds(2);
+  yield ctx.text('BOSS APPROACHING', '#ff8080');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerBoss();
+}
+
+function* level3NormalScript(ctx) {
+  // Phase 1: Roost intro — mixed waves (~0:00 - ~1:10)
+  yield ctx.text('THE ROOST', '#aa3080');
+  yield ctx.waitSeconds(3);
+  for (let w = 0; w < 4; w++) {
+    const g = `l3_mix_${w}`;
+    ctx.spawnGroup(g, (spawn) => {
+      for (let i = 0; i < 3 + w; i++) spawn('drone', {});
+      for (let i = 0; i < 3 + w; i++) spawn('sparrow', {});
+    });
+    yield ctx.waitSeconds(14);
+  }
+
+  // Phase 2: Sniper + sparrow pincer (~1:10 - ~2:00)
+  yield ctx.text('PINCER', '#408050');
+  yield ctx.waitSeconds(2);
+  const pincer = 'l3_pincer';
+  ctx.spawnGroup(pincer, (spawn) => {
+    spawn('sniper', {}); spawn('sniper', {});
+    for (let i = 0; i < 5; i++) spawn('sparrow', {});
+  });
+  yield ctx.waitUntilGroupCleared(pincer);
+  yield ctx.waitSeconds(6);
+  const pincer2 = 'l3_pincer2';
+  ctx.spawnGroup(pincer2, (spawn) => {
+    spawn('sniper', {}); spawn('turret', {});
+    for (let i = 0; i < 4; i++) spawn('sparrow', {});
+  });
+  yield ctx.waitUntilGroupCleared(pincer2);
+
+  // First Mini-Boss at ~2:30+
+  yield ctx.text('SPARROW ALPHA', '#e08040');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerMiniBoss('sparrow');
+  yield ctx.waitUntilMiniBossDead();
+
+  // Phase 3: Full spectrum + hazards (~3:00 - ~3:50)
+  yield ctx.text('FULL SPECTRUM', '#c0a030');
+  yield ctx.waitSeconds(2);
+  ctx.spawnHazard('hazard_glare');
+  ctx.spawnHazard('hazard_crosswind');
+  const full1 = 'l3_full1';
+  ctx.spawnGroup(full1, (spawn) => {
+    for (let i = 0; i < 4; i++) spawn('drone', {});
+    spawn('turret', {}); spawn('flak', {}); spawn('sparrow', {});
+  });
+  yield ctx.waitSeconds(10);
+  const full2 = 'l3_full2';
+  ctx.spawnGroup(full2, (spawn) => {
+    for (let i = 0; i < 3; i++) spawn('drone', {});
+    spawn('sniper', {}); spawn('turret', {}); spawn('flak', {});
+  });
+  yield ctx.waitUntilGroupCleared(full2);
+
+  // Phase 4: Elite combat (~3:50 - ~4:20)
+  yield ctx.text('ELITE COMBAT', '#ff6060');
+  yield ctx.waitSeconds(2);
+  const elite = 'l3_elite';
+  ctx.spawnGroup(elite, (spawn) => {
+    spawn('turret', {}); spawn('turret', {});
+    spawn('flak', {}); spawn('flak', {});
+    spawn('sniper', {}); spawn('sniper', {});
+  });
+  yield ctx.waitUntilGroupCleared(elite);
+
+  // Second Mini-Boss (~4:20)
+  yield ctx.text('FLAK CAPTAIN', '#8060a0');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerMiniBoss('flak');
+  yield ctx.waitUntilMiniBossDead();
+
+  // Phase 5: Finale gauntlet (~4:35 - ~5:00)
+  yield ctx.text('FINALE', '#ff4040');
+  yield ctx.waitSeconds(2);
+  const finale = 'l3_finale';
+  ctx.spawnGroup(finale, (spawn) => {
+    for (let i = 0; i < 4; i++) spawn('drone', {});
+    for (let i = 0; i < 3; i++) spawn('sparrow', {});
+    spawn('turret', {}); spawn('flak', {}); spawn('sniper', {});
+  });
+  yield ctx.waitUntilEnemiesBelow(4);
+  yield ctx.waitSeconds(2);
+  yield ctx.text('BOSS APPROACHING', '#ff8080');
+  yield ctx.waitSeconds(1.5);
+  yield ctx.triggerBoss();
 }
 
 function fireProjAngled(fromX, fromY, toX, toY, angleOffsetRad, dmg, owner, color, debuffing, rangedType, ownerBird) {
@@ -1024,6 +1743,14 @@ function computeBirdStats(bird) {
   }
 }
 
+function computePeckCooldown(bird, sp) {
+  const raw         = PECK_BASE_TIMER / (1 + (sp.spd / PECK_SPD_SCALE));
+  const speciesMult = bird.species === 'goth_chicken' ? PECK_GOTH_MULT : 1.0;
+  const jitter      = Math.random() * 0.15;
+  const cooled      = raw * speciesMult + jitter;
+  return Math.max(PECK_MIN_COOLDOWN, Math.min(PECK_MAX_COOLDOWN, cooled));
+}
+
 function awardBirdXP(bird, amount) {
   if (!bird || !bird.alive || bird.level >= MAX_BIRD_LEVEL || amount <= 0) return;
   bird.xp += amount;
@@ -1078,7 +1805,7 @@ function killBird(b) {
   b.hp = 0; b.alive = false; b.deathTime = state.runTime;
   state.lostBirds.push({ id:b.id, name:b.name, species:b.species, time:state.runTime });
   state.morale = Math.max(0, state.morale - (b.species === 'angry_honker' ? 25 : 15));
-  processDeathInheritance(b);
+  if (profile.hardcoreMode) processDeathInheritance(b);
 }
 
 function checkKamikazeTrigger(bird) {
@@ -1106,6 +1833,7 @@ function kamikazeExplode(bird) {
         state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30);
       } else {
         e.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4);
+        waveController.markEnemyDead(e.id);
       }
     }
   });
@@ -1235,11 +1963,13 @@ function updateBirds(dt) {
         // Hit enemies along charge path
         const allTargets = [
           ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+          ...(state.miniBoss?.alive ? [state.miniBoss] : []),
           ...state.enemies.filter(e => e.alive),
         ];
+        const hitR = (t) => t === state.boss ? 30 : t === state.miniBoss ? 20 : ENEMY_R;
         allTargets.forEach(tgt => {
           if (bird.chargeHit.includes(tgt.id || tgt)) return;
-          if (dist(bird.x, bird.y, tgt.x, tgt.y) < 28 + (tgt === state.boss ? 30 : ENEMY_R)) {
+          if (dist(bird.x, bird.y, tgt.x, tgt.y) < 28 + hitR(tgt)) {
             bird.chargeHit.push(tgt.id || tgt);
             let dmg = sp.dmg;
             if (state.stance === 'aggressive')                                   dmg *= 1.30;
@@ -1254,11 +1984,15 @@ function updateBirds(dt) {
               state.score += 50;
               awardBirdXP(bird, dmg * 0.3);
               if (tgt.hp <= 0) { tgt.alive = false; state.bossKilled = true; state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30); }
+            } else if (tgt === state.miniBoss) {
+              tgt.hp -= dmg; tgt.flashTimer = 0.18;
+              awardBirdXP(bird, dmg * 0.25);
+              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 300; state.morale = Math.min(100, state.morale + 15); }
             } else {
               const finalDmg = dmg * (tgt.debuffed ? 1.10 : 1.0);
               tgt.hp -= finalDmg; tgt.flashTimer = 0.18;
               awardBirdXP(bird, finalDmg * 0.2);
-              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); }
+              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); waveController.markEnemyDead(tgt.id); }
             }
             bird.flashTimer = 0.18;
           }
@@ -1267,9 +2001,9 @@ function updateBirds(dt) {
         // Reached end of charge line or left screen
         const dEnd = dist(bird.x, bird.y, bird.chargeEndX, bird.chargeEndY);
         if (dEnd < 20 || bird.x < -40 || bird.x > W + 40 || bird.y < -40 || bird.y > H + 40) {
-          bird.meleeState  = 'returning';
-          bird.chargeHit   = [];
-          bird.atkCooldown = 1.6;
+          bird.meleeState   = 'returning';
+          bird.chargeHit    = [];
+          bird.peckCooldown = computePeckCooldown(bird, sp) * PECK_CHARGE_MULT;
         }
 
       } else if (bird.meleeState === 'peeling') {
@@ -1279,7 +2013,7 @@ function updateBirds(dt) {
           bird.meleeState = 'returning';
         } else {
           const dTgt = dist(bird.x, bird.y, tgt.x, tgt.y);
-          const hitR  = (tgt === state.boss ? 30 : ENEMY_R) + 22;
+          const hitR  = (tgt === state.boss ? 30 : tgt === state.miniBoss ? 20 : ENEMY_R) + 22;
           if (dTgt <= hitR) {
             // Land strike
             let dmg = sp.dmg;
@@ -1314,15 +2048,19 @@ function updateBirds(dt) {
               state.score += 50;
               awardBirdXP(bird, dmg * 0.3);
               if (tgt.hp <= 0) { tgt.alive = false; state.bossKilled = true; state.kills++; state.score += 1000; state.morale = Math.min(100, state.morale + 30); }
+            } else if (tgt === state.miniBoss) {
+              tgt.hp -= dmg; tgt.flashTimer = 0.18;
+              awardBirdXP(bird, dmg * 0.25);
+              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 300; state.morale = Math.min(100, state.morale + 15); }
             } else {
               const finalDmg = dmg * (tgt.debuffed ? 1.10 : 1.0);
               tgt.hp -= finalDmg; tgt.flashTimer = 0.18;
               awardBirdXP(bird, finalDmg * 0.2);
-              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); }
+              if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); waveController.markEnemyDead(tgt.id); }
             }
-            bird.flashTimer  = 0.18;
-            bird.atkCooldown = (1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.3;
-            if (bird.traits.includes('Clueless')) bird.atkCooldown += Math.random() * 0.6;
+            bird.flashTimer   = 0.18;
+            bird.peckCooldown = computePeckCooldown(bird, sp);
+            if (bird.traits.includes('Clueless')) bird.peckCooldown += Math.random() * 0.6;
             if (bird.meleeTarget && bird.meleeTarget.alive) {
               // Target survived the hit — keep peeling
             } else {
@@ -1335,6 +2073,7 @@ function updateBirds(dt) {
                 if (bird.chainCount <= 3 && Math.random() < chainChance) {
                   const chainPool = [
                     ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+                    ...(state.miniBoss?.alive ? [state.miniBoss] : []),
                     ...state.enemies.filter(e => e.alive),
                   ].sort((a, b) =>
                     dist(bird.x, bird.y, a.x, a.y) - dist(bird.x, bird.y, b.x, b.y));
@@ -1365,11 +2104,15 @@ function updateBirds(dt) {
         }
 
       } else if (bird.meleeState === 'returning') {
-        if (bird.atkCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
-          const reEngagePool = [
+        if (bird.peckCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
+          const reEngageCandidates = [
             ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+            ...(state.miniBoss?.alive ? [state.miniBoss] : []),
             ...state.enemies.filter(e => e.alive),
-          ].filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range * MELEE_RANGE_MULT);
+          ];
+          const reEngageRange = (e) => (e === state.boss || e === state.miniBoss)
+            ? Math.max(sp.range * MELEE_RANGE_MULT, 250) : sp.range * MELEE_RANGE_MULT;
+          const reEngagePool = reEngageCandidates.filter(e => dist(bird.x, bird.y, e.x, e.y) < reEngageRange(e));
           if (reEngagePool.length) {
             bird.meleeTarget = reEngagePool.reduce((best, e) =>
               dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
@@ -1412,13 +2155,17 @@ function updateBirds(dt) {
     // ── Auto-attack / attack trigger ─────────────────────
     bird.atkCooldown -= dt;
     if (sp.combatClass === 'melee') {
+      bird.peckCooldown -= dt;
       // Melee: trigger peel/charge when idle and cooldown ready
-      if (bird.meleeState === 'idle' && bird.atkCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
+      if (bird.meleeState === 'idle' && bird.peckCooldown <= 0 && !state.isReorganizing && state.stance !== 'rally') {
         const allT = [
           ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+          ...(state.miniBoss?.alive ? [state.miniBoss] : []),
           ...state.enemies.filter(e => e.alive),
         ];
-        const inRange = allT.filter(e => dist(bird.x, bird.y, e.x, e.y) < sp.range * MELEE_RANGE_MULT);
+        const meleeRange = (e) => (e === state.boss || e === state.miniBoss)
+          ? Math.max(sp.range * MELEE_RANGE_MULT, 250) : sp.range * MELEE_RANGE_MULT;
+        const inRange = allT.filter(e => dist(bird.x, bird.y, e.x, e.y) < meleeRange(e));
         if (inRange.length) {
           const nearest = inRange.reduce((best, e) =>
             dist(bird.x, bird.y, e.x, e.y) < dist(bird.x, bird.y, best.x, best.y) ? e : best);
@@ -1437,7 +2184,7 @@ function updateBirds(dt) {
             bird.meleeState  = 'peeling';
           }
         } else {
-          bird.atkCooldown = 0.4;
+          bird.peckCooldown = 0.4;
         }
       }
     } else {
@@ -1449,10 +2196,12 @@ function updateBirds(dt) {
         } else {
           const allT = [
             ...(state.boss?.alive && state.boss.state !== 'shielded' ? [state.boss] : []),
+            ...(state.miniBoss?.alive ? [state.miniBoss] : []),
             ...state.enemies.filter(e => e.alive),
           ];
           const inRange = allT.filter(e => {
-            const r = (e === state.boss && state.bossActive) ? Math.max(sp.range, 220) : sp.range;
+            const r = (e === state.boss && state.bossActive) || e === state.miniBoss
+              ? Math.max(sp.range, 260) : sp.range;
             return dist(bird.x, bird.y, e.x, e.y) < r;
           });
           if (inRange.length) target = inRange.reduce((best, e) =>
@@ -1517,6 +2266,17 @@ function updateEnemies(dt) {
   state.enemies.forEach(e => {
     if (!e.alive) return;
     if (e.debuffed) { e.debuffTimer -= dt; if (e.debuffTimer <= 0) { e.debuffed = false; e.debuffTimer = 0; } }
+
+    if (e.pathFn) {
+      e.pathTime = (e.pathTime || 0) + dt;
+      const baseX = e.spawnX != null ? e.spawnX : e.x;
+      const baseY = e.spawnY != null ? e.spawnY : e.y;
+      const pos = e.pathFn(e.pathTime, baseX, baseY);
+      if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+        e.x = pos.x;
+        e.y = pos.y;
+      }
+    }
 
     if (e.type === 'turret') {
       e.y += e.vy * dt * 60;
@@ -1763,6 +2523,43 @@ function updateBoss(dt) {
   }
 }
 
+function updateMiniBoss(dt) {
+  const mb = state.miniBoss;
+  if (!mb?.alive) return;
+  const alive = state.birds.filter(b => b.alive);
+  if (!alive.length) return;
+
+  if (mb.debuffed) { mb.debuffTimer -= dt; if (mb.debuffTimer <= 0) mb.debuffed = false; }
+  mb.x += mb.vx * dt * 50;
+  mb.y += mb.vy * dt * 50;
+  if (mb.x < 80 || mb.x > W - 80) mb.vx *= -1;
+  if (mb.y > H * 0.45) mb.vy = -0.2;
+  if (mb.y < 80) mb.vy = 0.35;
+  mb.flashTimer = Math.max(0, mb.flashTimer - dt);
+
+  mb.atkCooldown -= dt;
+  if (mb.atkCooldown <= 0) {
+    const t = alive[Math.floor(Math.random() * alive.length)];
+    if (mb.pattern === 'spread') {
+      for (let i = -1; i <= 1; i++) {
+        const a = Math.atan2(t.y - mb.y, t.x - mb.x) + i * 0.35;
+        fireProj(mb.x, mb.y, mb.x + Math.cos(a) * 200, mb.y + Math.sin(a) * 200, 18, 'enemy', mb.color);
+      }
+      mb.atkCooldown = 2.2;
+    } else if (mb.pattern === 'burst') {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + mb.phaseTimer * 0.5;
+        fireProj(mb.x, mb.y, mb.x + Math.cos(a) * 300, mb.y + Math.sin(a) * 300, 14, 'enemy', mb.color);
+      }
+      mb.atkCooldown = 3.0;
+    } else {
+      fireProj(mb.x, mb.y, t.x, t.y, 22, 'enemy', mb.color);
+      mb.atkCooldown = 1.8;
+    }
+  }
+  mb.phaseTimer += dt;
+}
+
 // ════════════════════════════════════════════════
 // UPDATE — PROJECTILES
 // ════════════════════════════════════════════════
@@ -1774,6 +2571,22 @@ function updateProjectiles(dt) {
     if (p.x < -20 || p.x > W+20 || p.y < -20 || p.y > H+20) { p.alive = false; return; }
 
     if (p.owner === 'bird') {
+      // Hit mini-boss
+      if (state.miniBoss?.alive) {
+        if (dist(p.x, p.y, state.miniBoss.x, state.miniBoss.y) < 20 + PROJ_R) {
+          if (p.debuffing) { state.miniBoss.debuffed = true; state.miniBoss.debuffTimer = 4; }
+          let dmg = p.dmg * (state.miniBoss.debuffed ? 1.10 : 1.0);
+          state.miniBoss.hp -= dmg; state.miniBoss.flashTimer = 0.1; p.alive = false;
+          state.score += 30;
+          awardBirdXP(p.ownerBird, dmg * 0.25);
+          if (state.miniBoss.hp <= 0) {
+            state.miniBoss.alive = false;
+            state.kills++; state.score += 300;
+            state.morale = Math.min(100, state.morale + 15);
+          }
+          return;
+        }
+      }
       // Hit boss
       if (state.boss?.alive && state.boss.state !== 'shielded') {
         if (dist(p.x, p.y, state.boss.x, state.boss.y) < 30 + PROJ_R) {
@@ -1802,6 +2615,7 @@ function updateProjectiles(dt) {
           if (e.hp <= 0) {
             e.alive = false; state.kills++; state.score += 100;
             state.morale = Math.min(100, state.morale + 4);
+            waveController.markEnemyDead(e.id);
           }
           break;
         }
@@ -1858,14 +2672,7 @@ function updateFloatTexts(dt) {
 // ════════════════════════════════════════════════
 
 function updateSpawner() {
-  if (!state.bossTriggered && state.runTime >= BOSS_TRIGGER) { spawnBoss(); return; }
-  if (state.bossTriggered) return;
-  while (state.nextSpawnIdx < state.spawnSchedule.length &&
-         state.runTime >= state.spawnSchedule[state.nextSpawnIdx].time) {
-    const ev = state.spawnSchedule[state.nextSpawnIdx];
-    if (ev.type.startsWith('hazard_')) spawnHazard(ev.type); else spawnEnemy(ev.type);
-    state.nextSpawnIdx++;
-  }
+  // legacy schedule-based spawner; retained as a fallback for now
 }
 
 // ════════════════════════════════════════════════
@@ -1921,6 +2728,128 @@ function updateCamera() {
 }
 
 // ════════════════════════════════════════════════
+// PATTERN HELPERS (ENEMY PROJECTILES)
+// ════════════════════════════════════════════════
+
+function getFrontLineBird() {
+  const alive = state.birds.filter(b => b.alive);
+  if (!alive.length) return null;
+  const leader = alive.find(b => b.formationSlot === 0);
+  return leader || alive[0];
+}
+
+function fireEnemyShotAngle(originX, originY, angleRad, dmg, color) {
+  const travel = 900;
+  const toX = originX + Math.cos(angleRad) * travel;
+  const toY = originY + Math.sin(angleRad) * travel;
+  fireProj(originX, originY, toX, toY, dmg, 'enemy', color || '#cc3030');
+}
+
+function circleAttack(originX, originY, opts) {
+  const options = opts || {};
+  const stepDeg = options.density != null ? options.density : 20;
+  const baseDmg = options.damage != null ? options.damage : 16;
+  const wobble  = options.wobble != null ? options.wobble : 0;
+  for (let angle = 0; angle < 360; angle += stepDeg) {
+    const rad = (angle + wobble) * Math.PI / 180;
+    fireEnemyShotAngle(originX, originY, rad, baseDmg, options.color || '#cc3030');
+  }
+}
+
+function spreadShot(originX, originY, opts) {
+  const options = opts || {};
+  const arcDeg  = options.arc != null ? options.arc : 45;
+  const count   = options.count != null ? options.count : 5;
+  const baseDmg = options.damage != null ? options.damage : 18;
+  const aimed   = options.aimed !== false;
+
+  let baseAngle;
+  if (aimed) {
+    const target = getFrontLineBird();
+    if (target) {
+      baseAngle = Math.atan2(target.y - originY, target.x - originX);
+    } else {
+      baseAngle = -Math.PI / 2;
+    }
+  } else {
+    baseAngle = -Math.PI / 2;
+  }
+
+  if (count <= 1) {
+    fireEnemyShotAngle(originX, originY, baseAngle, baseDmg, options.color || '#cc3030');
+    return;
+  }
+
+  const arcRad = arcDeg * Math.PI / 180;
+  const start  = baseAngle - arcRad / 2;
+  const step   = arcRad / (count - 1);
+  for (let i = 0; i < count; i++) {
+    const ang = start + i * step;
+    fireEnemyShotAngle(originX, originY, ang, baseDmg, options.color || '#cc3030');
+  }
+}
+
+// ════════════════════════════════════════════════
+// PATH HELPERS (ENEMY MOVEMENT)
+// ════════════════════════════════════════════════
+
+function makeSinePath(options) {
+  const opts = options || {};
+  const amplitude = opts.amplitude != null ? opts.amplitude : 80;
+  const wavelength = opts.wavelength != null ? opts.wavelength : 260;
+  const speed = opts.speed != null ? opts.speed : 60;
+  const phase = opts.phase != null ? opts.phase : 0;
+  return function pathFn(t, startX, startY) {
+    const y = startY + speed * t;
+    const x = startX + amplitude * Math.sin((y / wavelength) * Math.PI * 2 + phase);
+    return { x, y };
+  };
+}
+
+function makeBezierPath(p0, p1, p2, p3, duration) {
+  const total = duration || 4.0;
+  return function pathFn(t) {
+    const u = Math.min(1, t / total);
+    const uu = u * u;
+    const uuu = uu * u;
+    const tt = (1 - u);
+    const ttt = tt * tt * tt;
+    const x = ttt*p0.x + 3*tt*tt*u*p1.x + 3*tt*uu*p2.x + uuu*p3.x;
+    const y = ttt*p0.y + 3*tt*tt*u*p1.y + 3*tt*uu*p2.y + uuu*p3.y;
+    return { x, y };
+  };
+}
+
+// ════════════════════════════════════════════════
+// FORMATION HELPERS
+// ════════════════════════════════════════════════
+
+function spawnGridFormation(ctx, groupId, rows, cols, type, opts) {
+  const options = opts || {};
+  const spacingX = options.spacingX != null ? options.spacingX : 40;
+  const spacingY = options.spacingY != null ? options.spacingY : 36;
+  const offsetX  = options.offsetX != null ? options.offsetX : (W / 2 - ((cols - 1) * spacingX) / 2);
+  const offsetY  = options.offsetY != null ? options.offsetY : -40;
+  const vx       = options.vx != null ? options.vx : 0;
+  const vy       = options.vy != null ? options.vy : 0.5;
+
+  ctx.spawnGroup(groupId, (spawn) => {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        spawn(type, {
+          x: offsetX + c * spacingX,
+          y: offsetY + r * spacingY,
+          vx: vx,
+          vy: vy,
+          gridRow: r,
+          gridCol: c,
+        });
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════
 // MAIN UPDATE
 // ════════════════════════════════════════════════
 
@@ -1950,10 +2879,12 @@ function update(dt) {
 
   updateMorale(dt);
   updateFormationTargets();
+  waveController.tick(dt, state.runTime);
   updateSpawner();
   updateBirds(dt);
   updateEnemies(dt);
   updateBoss(dt);
+  updateMiniBoss(dt);
   updateProjectiles(dt);
   updateHazards(dt);
   updateFloatTexts(dt);
@@ -1963,9 +2894,10 @@ function update(dt) {
 
   const allDead      = state.birds.every(b => !b.alive);
   const bossDefeated = state.bossTriggered && state.bossKilled;
-  const timeout      = state.runTime >= (state.bossTriggered ? BOSS_TRIGGER + 80 : BOSS_TRIGGER + 5);
+  const scriptTimeout = waveController.scriptDone &&
+                        state.runTime >= waveController.scriptDoneTime + 10;
 
-  if (allDead || bossDefeated || timeout) {
+  if (allDead || bossDefeated || scriptTimeout) {
     if (bossDefeated && state.stage < 3) {
       advanceStage();
       return;
@@ -1977,17 +2909,17 @@ function update(dt) {
       state.bossActive     = false;
       state.bossTriggered  = false;
       state.boss           = null;
+      state.miniBoss       = null;
       state.enemies        = [];
       state.projectiles    = [];
       state.hazards        = [];
-      state.nextSpawnIdx   = 0;
       state.crosswindTimer = 0;
-      state.spawnSchedule  = buildSchedule(3, state.currentDifficulty);
+      waveController.startLevel(3, state.currentDifficulty);
       spawnFloatText(W / 2, H / 2 - 30, `LOOP ${state.infiniteLoop}`, '#ff8040');
       spawnFloatText(W / 2, H / 2 + 10, `THREAT ×${state.diffMult.toFixed(2)}`, '#ff8040');
       return;
     } else {
-      if (bossDefeated || (!allDead && timeout)) {
+      if (bossDefeated || (!allDead && scriptTimeout)) {
         state.runSuccess = true;
         state.score += state.birds.filter(b => b.alive).length * 200;
         if (state.bossKilled) state.score += 500;
@@ -2061,13 +2993,13 @@ function advanceStage() {
   state.bossActive     = false;
   state.bossTriggered  = false;
   state.boss           = null;
+  state.miniBoss       = null;
   state.enemies        = [];
   state.projectiles    = [];
   state.hazards        = [];
-  state.nextSpawnIdx   = 0;
   state.crosswindTimer = 0;
   state.bgScrollSpeed  = state.stage === 2 ? 45 : 55;
-  state.spawnSchedule  = buildSchedule(state.stage, state.currentDifficulty);
+  waveController.startLevel(state.currentLevel, state.currentDifficulty);
   spawnFloatText(W / 2, H / 2 - 30, `STAGE ${state.stage - 1} CLEAR`, '#50cc40');
   spawnFloatText(W / 2, H / 2 + 10, `STAGE ${state.stage} INCOMING`, '#c8e060');
   const lvlLabel = document.getElementById('hud-level-label');
@@ -2094,6 +3026,7 @@ function render() {
   drawHazards();
   drawProjectiles();
   drawEnemies();
+  drawMiniBoss();
   drawBoss();
   drawBirds();
   drawFloatTexts();
@@ -2103,6 +3036,7 @@ function render() {
 
   // Boss bar drawn after transform (fixed canvas position)
   if (state.bossActive && state.boss?.alive) drawBossBar();
+  if (state.miniBoss?.alive) drawMiniBossBar();
 }
 
 function drawBackground() {
@@ -2391,6 +3325,51 @@ function drawEnemies() {
     ctx.fillStyle='#1a0a0a'; ctx.fillRect(bx,by,bW,bH);
     ctx.fillStyle='#cc3030'; ctx.fillRect(bx,by,bW*hpF,bH);
   });
+}
+
+const MINI_BOSS_R = 20;
+
+function drawMiniBoss() {
+  const mb = state.miniBoss;
+  if (!mb?.alive) return;
+  if (mb.flashTimer > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${(mb.flashTimer / 0.1) * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(mb.x, mb.y, MINI_BOSS_R + 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = mb.color;
+  ctx.beginPath();
+  ctx.arc(mb.x, mb.y, MINI_BOSS_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(mb.name, mb.x, mb.y - MINI_BOSS_R - 6);
+}
+
+function drawMiniBossBar() {
+  const mb = state.miniBoss;
+  if (!mb?.alive) return;
+  const barW = 120;
+  const barH = 6;
+  const x = W / 2 - barW / 2;
+  const y = H - 52;
+  ctx.fillStyle = '#1a0a0a';
+  ctx.fillRect(x, y, barW, barH);
+  const pct = mb.hp / mb.maxHp;
+  ctx.fillStyle = mb.color;
+  ctx.fillRect(x, y, barW * pct, barH);
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, barW, barH);
+  ctx.fillStyle = '#ddd';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(mb.name, W / 2, y - 4);
 }
 
 function drawBoss() {
@@ -3192,6 +4171,32 @@ function buildHallTab() {
 
 let selectedDifficulty = 'normal';
 
+function showHardcoreModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'hardcore-modal-overlay';
+  overlay.innerHTML = `
+    <div class="hardcore-modal">
+      <h2>ENABLE HARDCORE MODE?</h2>
+      <p>Dead birds will be <strong>permanently removed</strong> from your roster. Genetic inheritance will be significantly stronger. You can disable this at any time — but dead birds won't come back.</p>
+      <div class="hardcore-modal-buttons">
+        <button id="hardcore-confirm">ENABLE</button>
+        <button id="hardcore-cancel">CANCEL</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('hardcore-confirm').onclick = () => {
+    profile.hardcoreMode = true;
+    saveProfile();
+    const cb = document.getElementById('hardcore-mode-toggle');
+    if (cb) cb.checked = true;
+    overlay.remove();
+  };
+  document.getElementById('hardcore-cancel').onclick = () => {
+    overlay.remove();
+  };
+}
+
 function buildLevelSelect() {
   const container = document.getElementById('level-select-inner');
   if (!container) return;
@@ -3222,6 +4227,10 @@ function buildLevelSelect() {
         <input type="checkbox" id="inf-mode-toggle" ${profile.infiniteMode?'checked':''}>
         INFINITE MODE <span class="inf-hint">(Loop Stage 3 after Boss 3. Threat scales ×1.25 per loop.)</span>
       </label>
+      <label class="inf-toggle hardcore-toggle">
+        <input type="checkbox" id="hardcore-mode-toggle" ${profile.hardcoreMode?'checked':''}>
+        HARDCORE MODE <span class="inf-hint">(Permadeath. Dead birds are gone forever. Genetic inheritance is amplified.)</span>
+      </label>
     </div>
   `;
 
@@ -3239,6 +4248,17 @@ function buildLevelSelect() {
   document.getElementById('inf-mode-toggle')?.addEventListener('change', ev=>{
     profile.infiniteMode = ev.target.checked;
     saveProfile();
+  });
+
+  // Hardcore mode toggle with confirmation modal
+  document.getElementById('hardcore-mode-toggle')?.addEventListener('change', ev=>{
+    if (ev.target.checked) {
+      ev.target.checked = false;
+      showHardcoreModal();
+    } else {
+      profile.hardcoreMode = false;
+      saveProfile();
+    }
   });
 
   selectedDifficulty = 'normal';
@@ -3318,9 +4338,16 @@ function gameLoop(ts) {
   if (!running) return;
   const dt = Math.min((ts-lastTS)/1000, 0.05);
   lastTS = ts;
-  update(dt);
-  render();
-  animId = requestAnimationFrame(gameLoop);
+  try {
+    update(dt);
+    render();
+  } catch (e) {
+    // Prevent unforeseen runtime errors from permanently freezing the game loop.
+    console.error('[Assault Flock] Uncaught error in gameLoop:', e);
+  }
+  if (running) {
+    animId = requestAnimationFrame(gameLoop);
+  }
 }
 
 function launchBattle() {
@@ -3348,7 +4375,6 @@ function startRun() {
   state.formation         = formation;
   state.diffMult          = selectedDifficulty==='brutal'?1.5:selectedDifficulty==='hard'?1.2:1.0;
   state.bgScrollSpeed     = 55;
-  state.spawnSchedule     = buildSchedule(1, selectedDifficulty);
   state.stage             = 1;
   state.infiniteMode      = profile.infiniteMode || false;
 
@@ -3374,6 +4400,17 @@ function startRun() {
   // Prune unassigned birds and inject borbs
   finalizeFlockForFormation(formation);
 
+  waveController.registerLevel('1:normal', level1NormalScript);
+  waveController.registerLevel('1:hard', level1NormalScript);
+  waveController.registerLevel('1:brutal', level1NormalScript);
+  waveController.registerLevel('2:normal', level2NormalScript);
+  waveController.registerLevel('2:hard', level2NormalScript);
+  waveController.registerLevel('2:brutal', level2NormalScript);
+  waveController.registerLevel('3:normal', level3NormalScript);
+  waveController.registerLevel('3:hard', level3NormalScript);
+  waveController.registerLevel('3:brutal', level3NormalScript);
+  waveController.startLevel(state.currentLevel, state.currentDifficulty);
+
   launchBattle();
 }
 
@@ -3387,7 +4424,6 @@ function retryRun() {
   state.stage             = 1;
   state.currentLevel      = 1;
   state.infiniteMode      = prevInfinite;
-  state.spawnSchedule     = buildSchedule(1, prevDiff);
   const bossTypes = ['a','b','c','d'];
   for (let i = bossTypes.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -3395,6 +4431,17 @@ function retryRun() {
   }
   state.bossForStage = { 1: bossTypes[0], 2: bossTypes[1], 3: bossTypes[2] };
   finalizeFlockForFormation(state.formation || prevFormation);
+
+  waveController.registerLevel('1:normal', level1NormalScript);
+  waveController.registerLevel('1:hard', level1NormalScript);
+  waveController.registerLevel('1:brutal', level1NormalScript);
+  waveController.registerLevel('2:normal', level2NormalScript);
+  waveController.registerLevel('2:hard', level2NormalScript);
+  waveController.registerLevel('2:brutal', level2NormalScript);
+  waveController.registerLevel('3:normal', level3NormalScript);
+  waveController.registerLevel('3:hard', level3NormalScript);
+  waveController.registerLevel('3:brutal', level3NormalScript);
+  waveController.startLevel(state.currentLevel, state.currentDifficulty);
   launchBattle();
 }
 
@@ -3435,7 +4482,7 @@ function showDebrief() {
     if (fallen.id && fallen.id.startsWith('borb_')) return;
     const sp=SPECIES[fallen.species];
     profile.hallOfFeathers.push({ name:fallen.name, species:fallen.species, role:sp.role, deathTime:fallen.time, runNum:profile.runCount });
-    if (fallen.id) removeBird(fallen.id);
+    if (profile.hardcoreMode && fallen.id) removeBird(fallen.id);
   });
 
   // Egg legacy — only real birds count toward legacy enrichment
@@ -3444,6 +4491,12 @@ function showDebrief() {
     profile.eggLegacy.statBonus   = Math.min(0.20, (profile.eggLegacy.statBonus||0)+0.005*realLost.length);
     profile.eggLegacy.poolSize    = Math.min(3,    (profile.eggLegacy.poolSize||0)+0.08*realLost.length);
     profile.eggLegacy.traitQuality= Math.min(1.0,  (profile.eggLegacy.traitQuality||0)+0.01*realLost.length);
+  }
+
+  // Standard mode: passive egg legacy growth every run (slower than death-based Hardcore gains)
+  if (!profile.hardcoreMode) {
+    profile.eggLegacy.statBonus    = Math.min(0.20, (profile.eggLegacy.statBonus||0) + 0.002);
+    profile.eggLegacy.traitQuality = Math.min(1.0,  (profile.eggLegacy.traitQuality||0) + 0.005);
   }
 
   saveProfile();
@@ -3495,7 +4548,9 @@ function showDebrief() {
         return `<div class="lost-bird"><div class="lost-bird-dot" style="background:${sp.color}44;border-color:${sp.color}88;"></div><span class="lost-bird-name">${b.name} <span style="color:${sp.color};">(${sp.label})</span></span><span class="lost-bird-time">${mins}:${secs}</span></div>`;
       }).join('');
       const survivorLine=realSurvivors.length>0?`<p class="survivors-note">SURVIVED: ${realSurvivors.map(b=>b.name).join(', ')}</p>`:'';
-      birdsEl.innerHTML=`<h3>BIRDS LOST (${realLostBirds.length})</h3>${lostItems}${survivorLine}`;
+      const lostHeader = profile.hardcoreMode ? `BIRDS LOST (${realLostBirds.length})` : `BIRDS DOWN (${realLostBirds.length})`;
+      const returnNote = profile.hardcoreMode ? '' : '<p class="survivors-note">All birds have been returned to your roster.</p>';
+      birdsEl.innerHTML=`<h3>${lostHeader}</h3>${lostItems}${returnNote}${survivorLine}`;
     }
   }
 
@@ -3548,6 +4603,8 @@ function init() {
   loadProfile();
   loadBirdSprite();
   initState(false, false);
+  initMcpDebugSocket();
+  startMcpDebugPump();
   buildHubUI();
   initCameraControls();
   showScreen('hub');
