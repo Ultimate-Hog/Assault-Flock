@@ -1,0 +1,32 @@
+# Root-only web build for Assault Flock
+# Keep only: index.html, game.js, style.css, README.md, .gitignore
+
+# IDE / tooling
+.cursor/
+mcps/
+terminals/
+
+# Node / package deps
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Other local projects / engines
+GMOSSE/
+Powermanga/
+
+# Legacy structures (no longer tracked)
+_archive/
+docs/
+shoot/
+
+# Deployment / scripts (should not be re-added)
+deploy.ps1
+DEPLOY.md
+*.ps1
+
+# Design and reference docs (local-only)
+design.md
+*.pdf
+
