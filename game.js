@@ -726,6 +726,7 @@ function buildRunFlock() {
       peckCooldown:    i * 0.25,
       healCooldown:    0,
       flashTimer:      0,
+      peckAnimTimer:   0,
       slipstreamHot:   0,
       deathTime:       null,
       debuffApplied:   false,
@@ -791,7 +792,7 @@ function injectBorbsForFormation(formation) {
       targetX: FLOCK_X, targetY: FLOCK_Y,
       formationSlot: i, alive: true,
       atkCooldown:   i * 0.25, healCooldown: 0,
-      flashTimer:    0, slipstreamHot: 0,
+      flashTimer:    0, peckAnimTimer: 0, slipstreamHot: 0,
       deathTime:     null, debuffApplied: false,
       subflocked:    false, subflockTimer: 0,
       updraftTimer:  0, meleeState: 'idle',
@@ -846,6 +847,7 @@ function initState(keepCards, keepFormation) {
     crosswindTimer:    0,
     totalSlipstreamHealing: 0,
     floatTexts:        [],
+    peckSparks:        [],
     currentLevel:      1,
     currentDifficulty: diff,
     diffMult:          diff === 'brutal' ? 1.5 : diff === 'hard' ? 1.2 : 1.0,
@@ -1057,6 +1059,21 @@ function spawnFloatText(x, y, text, color, fontSize) {
   });
 }
 
+function spawnPeckSparks(x, y, color) {
+  const n = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 60;
+    state.peckSparks.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.2,
+      color: color || '#e0e0a0',
+    });
+  }
+}
+
 // ════════════════════════════════════════════════
 // WAVE CONTROLLER
 // ════════════════════════════════════════════════
@@ -1117,7 +1134,15 @@ class WaveController {
       },
       isGroupCleared: (groupId) => {
         const g = this.activeGroups.get(groupId);
-        return !g || g.ids.size === 0;
+        if (!g || !g.ids || g.ids.size === 0) return true;
+        // Sync group membership with actual enemy state in case any deaths were missed
+        for (const id of Array.from(g.ids)) {
+          const enemy = state.enemies.find(e => e.id === id);
+          if (!enemy || !enemy.alive) {
+            g.ids.delete(id);
+          }
+        }
+        return g.ids.size === 0;
       },
       enemiesAlive: () => state.enemies.filter(e => e.alive).length,
       waitSeconds: (seconds) => ({ type: 'wait', seconds }),
@@ -1938,8 +1963,9 @@ function awardBirdXP(bird, amount) {
   }
 }
 
-function processDeathInheritance(bird) {
+function processGeneticInheritance(bird, weight) {
   if (!bird.baseStats) return;
+  const w = Math.max(0, Math.min(2.5, weight || 0)); // allow some amplification but keep sane
   const base = bird.baseStats;
   const mods = bird.growthModifiers || {};
   const sp   = SPECIES[bird.species];
@@ -1957,14 +1983,18 @@ function processDeathInheritance(bird) {
     if (score > bestScore) { bestScore = score; dominantStat = stat; }
   });
 
-  // Skip inheritance if the bird died at level 1 with no modifiers (nothing to pass on)
-  if (!dominantStat || (bird.level <= 1 && bestScore <= 0)) return;
+  // Skip inheritance if the bird contributed nothing meaningful
+  if (!dominantStat || (bird.level <= 1 && bestScore <= 0) || w <= 0) return;
 
   const existing = profile.geneticBuffs.find(b => b.species === bird.species && b.stat === dominantStat);
   if (existing) {
-    existing.modifier = Math.min(0.50, existing.modifier * 1.2);
+    const growthMult = 1 + 0.20 * w;
+    existing.modifier = Math.min(0.50, existing.modifier * growthMult);
   } else {
-    profile.geneticBuffs.push({ species: bird.species, stat: dominantStat, modifier: 0.10 });
+    const baseMod = 0.05 * w;
+    if (baseMod > 0) {
+      profile.geneticBuffs.push({ species: bird.species, stat: dominantStat, modifier: Math.min(0.50, baseMod) });
+    }
   }
   saveProfile();
 }
@@ -1979,7 +2009,6 @@ function killBird(b) {
   b.hp = 0; b.alive = false; b.deathTime = state.runTime;
   state.lostBirds.push({ id:b.id, name:b.name, species:b.species, time:state.runTime });
   state.morale = Math.max(0, state.morale - (b.species === 'angry_honker' ? 25 : 15));
-  if (profile.hardcoreMode) processDeathInheritance(b);
 }
 
 function checkKamikazeTrigger(bird) {
@@ -2288,6 +2317,8 @@ function updateBirds(dt) {
               if (tgt.hp <= 0) { tgt.alive = false; state.kills++; state.score += 100; state.morale = Math.min(100, state.morale + 4); waveController.markEnemyDead(tgt.id); runLog.push('enemy_kill', { enemyType: tgt.type, killedBy: bird.id, score: 100 }); }
             }
             bird.flashTimer   = 0.18;
+            bird.peckAnimTimer = 0.15;
+            spawnPeckSparks(tgt.x, tgt.y, sp.color);
             bird.peckCooldown = computePeckCooldown(bird, sp);
             if (tgt === state.boss) bird.peckCooldown *= PECK_BOSS_MULT;
             else if (tgt === state.miniBoss) bird.peckCooldown *= PECK_MINIBOSS_MULT;
@@ -2525,6 +2556,7 @@ function updateBirds(dt) {
     }
 
     bird.flashTimer = Math.max(0, bird.flashTimer - dt);
+    bird.peckAnimTimer = Math.max(0, (bird.peckAnimTimer || 0) - dt);
   });
 
   if (state.focusTarget && !state.focusTarget.alive) state.focusTarget = null;
@@ -2704,7 +2736,12 @@ function updateEnemies(dt) {
     }
 
     e.flashTimer = Math.max(0, (e.flashTimer || 0) - dt);
-    if (e.y > H + 80) e.alive = false;
+    if (e.y > H + 80) {
+      e.alive = false;
+      if (typeof waveController !== 'undefined' && waveController && typeof waveController.markEnemyDead === 'function') {
+        waveController.markEnemyDead(e.id);
+      }
+    }
   });
 
   // Inter-enemy separation to reduce overlapping / stacking, especially for drones and sparrows
@@ -3128,6 +3165,16 @@ function updateFloatTexts(dt) {
   state.floatTexts = state.floatTexts.filter(ft => ft.timer > 0);
 }
 
+function updatePeckSparks(dt) {
+  state.peckSparks = state.peckSparks || [];
+  state.peckSparks.forEach(s => {
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.life -= dt;
+  });
+  state.peckSparks = state.peckSparks.filter(s => s.life > 0);
+}
+
 // ════════════════════════════════════════════════
 // UPDATE — SPAWNER
 // ════════════════════════════════════════════════
@@ -3410,6 +3457,7 @@ function update(dt) {
   updateProjectiles(dt);
   updateHazards(dt);
   updateFloatTexts(dt);
+  updatePeckSparks(dt);
   updateCamera();
 
   updateHUD();
@@ -3554,6 +3602,7 @@ function render() {
   drawMiniBoss();
   drawBoss();
   drawBirds();
+  drawPeckSparks();
   drawFloatTexts();
   if (state.isReorganizing) drawReorgOverlay();
 
@@ -3763,9 +3812,20 @@ function drawBirds() {
     } else {
       const angle = (bird.meleeState === 'charging' && bird.chargeDir)
         ? Math.atan2(bird.chargeDir.y, bird.chargeDir.x) + Math.PI / 2
-        : 0;
+        : (bird.meleeState === 'peeling' && bird.meleeTarget?.alive)
+          ? Math.atan2(bird.meleeTarget.y - bird.y, bird.meleeTarget.x - bird.x) + Math.PI / 2
+          : 0;
+      let drawX = bird.x, drawY = bird.y;
+      if (bird.peckAnimTimer > 0 && bird.meleeTarget?.alive) {
+        const t = bird.peckAnimTimer / 0.15;
+        const lunge = t > 0.5 ? 2 * (1 - t) : 2 * t;
+        const dx = bird.meleeTarget.x - bird.x, dy = bird.meleeTarget.y - bird.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        drawX += (dx / d) * lunge * 8;
+        drawY += (dy / d) * lunge * 8;
+      }
       ctx.save();
-      ctx.translate(bird.x, bird.y);
+      ctx.translate(drawX, drawY);
       ctx.rotate(angle);
       ctx.fillStyle = sp.color;
       ctx.beginPath();
@@ -3784,6 +3844,18 @@ function drawBirds() {
     ctx.fillStyle='#111a0a'; ctx.fillRect(bx,by,bW,bH);
     ctx.fillStyle=hpF>0.5?'#50cc40':hpF>0.25?'#d4860a':'#cc3030'; ctx.fillRect(bx,by,bW*hpF,bH);
   });
+}
+
+function drawPeckSparks() {
+  (state.peckSparks || []).forEach(s => {
+    const alpha = Math.max(0, s.life / 0.2);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
 }
 
 function drawEnemies() {
@@ -4752,7 +4824,7 @@ function showHardcoreModal() {
   overlay.innerHTML = `
     <div class="hardcore-modal">
       <h2>ENABLE HARDCORE MODE?</h2>
-      <p>Dead birds will be <strong>permanently removed</strong> from your roster. Genetic inheritance will be significantly stronger. You can disable this at any time — but dead birds won't come back.</p>
+      <p>Dead birds will be <strong>permanently removed</strong> from your roster. Genetic inheritance is always active, but will be significantly stronger in Hardcore. You can disable this at any time — but dead birds won't come back.</p>
       <div class="hardcore-modal-buttons">
         <button id="hardcore-confirm">ENABLE</button>
         <button id="hardcore-cancel">CANCEL</button>
@@ -4804,7 +4876,7 @@ function buildLevelSelect() {
       </label>
       <label class="inf-toggle hardcore-toggle">
         <input type="checkbox" id="hardcore-mode-toggle" ${profile.hardcoreMode?'checked':''}>
-        HARDCORE MODE <span class="inf-hint">(Permadeath. Dead birds are gone forever. Genetic inheritance is amplified.)</span>
+        HARDCORE MODE <span class="inf-hint">(Permadeath. Dead birds are gone forever. Genetic inheritance is always on, and amplified in Hardcore.)</span>
       </label>
     </div>
   `;
@@ -5078,6 +5150,18 @@ function showDebrief() {
   if (state.runSuccess && state.stage >= 3) {
     profile.personalBests['campaign_cleared'] = true;
   }
+
+  // Genetic inheritance — all real birds contribute based on progress, with deaths and Hardcore amplifying legacy
+  const allRealBirds = state.birds.filter(b => !b.isBorb);
+  allRealBirds.forEach(bird => {
+    if (!bird.baseStats) return;
+    const levelProgress = Math.max(0, Math.min(1, (bird.level - 1) / (MAX_BIRD_LEVEL - 1 || 1)));
+    let weight = levelProgress;
+    const wasLost = !!state.lostBirds.find(lb => lb.id === bird.id);
+    if (wasLost) weight *= 1.5;
+    if (profile.hardcoreMode) weight *= 1.5;
+    processGeneticInheritance(bird, weight);
+  });
 
   // Hall of Feathers — borbs are disposable and leave no legacy
   state.lostBirds.forEach(fallen=>{
