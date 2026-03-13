@@ -1004,6 +1004,21 @@ body {
 .event-line .warn   { color: var(--amber); }
 .event-line .danger { color: var(--red); }
 
+.debrief-event-timeline {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.debrief-event-timeline .event-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+.debrief-event-timeline .event-time   { min-width: 42px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.debrief-event-timeline .event-type   { min-width: 100px; color: var(--amber); font-size: 9px; }
+.debrief-event-timeline .event-summary { flex: 1; }
+
 .debrief-birds {
   text-align: left;
   margin-bottom: 28px;
