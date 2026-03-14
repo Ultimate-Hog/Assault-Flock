@@ -7,7 +7,7 @@
 // Centralized build metadata so playtests can verify the correct version.
 // Update this when cutting a new build.
 // [year, month, day, hour, minute]; month is 1-based for readability.
-const GAME_VERSION_TIMESTAMP = [2026, 3, 13, 12, 0];
+const GAME_VERSION_TIMESTAMP = [2026, 3, 14, 12, 0];
 
 const GAME_VERSION = (() => {
   const [year, month, day, hour, minute] = GAME_VERSION_TIMESTAMP;
@@ -79,12 +79,12 @@ const UNLOCK = {
 
 const SPECIES = {
   danger_sparrow:   { label:'Danger Sparrow',    init:'DS', role:'Striker',     color:'#e06030', hp:65,  dmg:22, spd:1.5, range:110, atkRate:1.2, aggression:0.9, combatClass:'melee',  rangedType:null,       critChance:0.15, peelSpd:3.2, peckSpeed:1.2, peckDmgMin:14, peckDmgMax:22 },
-  feathered_loiter: { label:'Feathered Loiterer',init:'FL', role:'Screen',      color:'#8aaa50', hp:42,  dmg:6,  spd:1.3, range:80,  atkRate:1.8, aggression:0.3, combatClass:'ranged', rangedType:'rapid',    critChance:0.10, peelSpd:0   },
+  feathered_loiter: { label:'Feathered Loiterer',init:'FL', role:'Screen',      color:'#8aaa50', hp:42,  dmg:6,  spd:1.3, range:80,  atkRate:2.0, aggression:0.3, combatClass:'ranged', rangedType:'rapid',    critChance:0.10, peelSpd:0   },
   goth_chicken:     { label:'Goth Chicken',      init:'GC', role:'Opportunist', color:'#9955dd', hp:82,  dmg:11, spd:1.9, range:90,  atkRate:1.0, aggression:0.5, combatClass:'melee',  rangedType:null,       critChance:0.28, peelSpd:3.0, peckSpeed:1.6, peckDmgMin:8,  peckDmgMax:18 },
   angry_honker:     { label:'Angry Honker',      init:'AH', role:'Anchor',      color:'#d4860a', hp:130, dmg:38, spd:0.8, range:100, atkRate:0.3, aggression:0.4, combatClass:'melee',  rangedType:null,       critChance:0.10, peelSpd:2.8, peckSpeed:3.0, peckDmgMin:30, peckDmgMax:55 },
   wise_old_bird:    { label:'Wise Old Bird',     init:'WB', role:'Specialist',  color:'#50a0cc', hp:72,  dmg:30, spd:1.1, range:160, atkRate:0.45,aggression:0.6, combatClass:'ranged', rangedType:'sniper',   critChance:0.12, peelSpd:0   },
   beach_screamer:   { label:'Beach Screamer',    init:'BS', role:'Medic',       color:'#40c0a0', hp:95,  dmg:9,  spd:1.2, range:65,  atkRate:0.7, aggression:0.2, combatClass:'ranged', rangedType:'triple',   critChance:0.10, peelSpd:0   },
-  clueless_borb:    { label:'Clueless Borb',     init:'CB', role:'Filler',      color:'#9090aa', hp:30,  dmg:4,  spd:1.0, range:80,  atkRate:0.6, aggression:0.1, combatClass:'ranged', rangedType:'rapid',    critChance:0.05, peelSpd:0   },
+  clueless_borb:    { label:'Clueless Borb',     init:'CB', role:'Filler',      color:'#9090aa', hp:30,  dmg:4,  spd:1.0, range:80,  atkRate:0.7, aggression:0.1, combatClass:'ranged', rangedType:'rapid',    critChance:0.05, peelSpd:0   },
 };
 
 const TRAITS = {
@@ -161,11 +161,11 @@ function getFormationOffsets(formation, count) {
 }
 
 const FORMATION_DESCS = {
-  flying_v:      'Classic wedge. Trailing birds get slipstream stamina recovery, passive HP regen, and formation armor (up to 18% reduction at deep rear). Leader tires faster and takes full exposure. Weak to flanking.',
-  spread_line:   '360° targeting coverage. No armor, no slipstream. Birds spread too thin to shelter each other. Vulnerable to focused fire but handles multi-directional threats well.',
-  tight_cluster: 'Maximum aura stacking from Anchors. All birds share flat 10% damage reduction from mutual shielding. Devastating AoE vulnerability — a single well-placed burst hits everyone.',
-  echelon:       'Staggered diagonal. Partial slipstream with better lateral coverage than the V. Sheltered flank gets 8% armor. Exposed flank gets none — direction of threat matters.',
-  loose_swarm:   'No fixed positions. High individual evasion — very hard to AoE effectively. No slipstream, no armor. Calls execute less predictably because bird positions are fluid.',
+  flying_v:      'Classic wedge. Trailing birds get slipstream stamina recovery, passive HP regen, formation armor (up to 18% at deep rear), and +12% speed. Leader tires faster and takes full exposure. Weak to flanking.',
+  spread_line:   '360° targeting coverage. Buff: +15% attack rate (open arcs). No armor, no slipstream. Birds spread too thin to shelter each other. Vulnerable to focused fire but handles multi-directional threats well.',
+  tight_cluster: 'Maximum aura stacking from Anchors. All birds share flat 10% damage reduction. Buff: +10% damage dealt (pack aggression). Devastating AoE vulnerability — a single well-placed burst hits everyone.',
+  echelon:       'Staggered diagonal. Partial slipstream with better lateral coverage than the V. Buff: +15% crit chance (flanking angle). Sheltered flank gets 8% armor. Exposed flank gets none — direction of threat matters.',
+  loose_swarm:   'No fixed positions. Buff: 22% chance to dodge single-target projectiles (fluid evasion). High individual evasion — very hard to AoE effectively. No slipstream, no armor. Calls execute less predictably because bird positions are fluid.',
 };
 
 const FORMATION_LABELS = {
@@ -174,6 +174,14 @@ const FORMATION_LABELS = {
   tight_cluster: 'TIGHT CLUSTER',
   echelon:       'ECHELON',
   loose_swarm:   'LOOSE SWARM',
+};
+
+const FORMATION_BUFFS = {
+  flying_v:      { spdMult: 1.12,  atkRateMult: 1.0,  dmgMult: 1.0,  critBonus: 0.00, dodgeChance: 0.00 },
+  spread_line:   { spdMult: 1.0,   atkRateMult: 1.15, dmgMult: 1.0,  critBonus: 0.00, dodgeChance: 0.00 },
+  tight_cluster: { spdMult: 1.0,   atkRateMult: 1.0,  dmgMult: 1.10, critBonus: 0.00, dodgeChance: 0.00 },
+  echelon:       { spdMult: 1.0,   atkRateMult: 1.0,  dmgMult: 1.0,  critBonus: 0.15, dodgeChance: 0.00 },
+  loose_swarm:   { spdMult: 1.0,   atkRateMult: 1.0,  dmgMult: 1.0,  critBonus: 0.00, dodgeChance: 0.22 },
 };
 
 function getFormationArmor(formation, slotIdx, cohesion) {
@@ -219,7 +227,7 @@ const MINI_BOSS_POOL = {
 // SAVE / LOAD  (localStorage)
 // ════════════════════════════════════════════════
 
-const SAVE_KEY = 'af_save_v6';
+const SAVE_KEY = 'af_save_v7';
 
 const STARTER_BIRDS = [
   { id:'s0', name:'Rex',      species:'danger_sparrow',   traits:['Reckless'],        xp:0, runsSurvived:0, growthModifiers:{} },
@@ -250,6 +258,7 @@ function defaultProfile() {
     runCount:             0,
     infiniteMode:         false,
     hardcoreMode:         false,
+    callCards:            [],
   };
 }
 
@@ -260,7 +269,7 @@ function saveProfile() {
 }
 
 function abandonTerritory() {
-  ['af_save_v6', 'af_save_v5', 'af_save_v4', 'af_save_v3'].forEach(k => {
+  ['af_save_v7', 'af_save_v6', 'af_save_v5', 'af_save_v4', 'af_save_v3'].forEach(k => {
     try { localStorage.removeItem(k); } catch(e) { /* offline */ }
   });
   profile = defaultProfile();
@@ -301,6 +310,16 @@ function loadProfile() {
       localStorage.removeItem('af_save_v5');
     }
   } catch(e) { /* ignore migration errors */ }
+  // One-time migration: v6 → v7 (add callCards)
+  try {
+    const v6Raw = localStorage.getItem('af_save_v6');
+    if (v6Raw) {
+      const old = JSON.parse(v6Raw);
+      if (!Array.isArray(old.callCards)) old.callCards = [];
+      localStorage.setItem(SAVE_KEY, JSON.stringify(old));
+      localStorage.removeItem('af_save_v6');
+    }
+  } catch(e) { /* ignore migration errors */ }
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
@@ -308,6 +327,7 @@ function loadProfile() {
       if (!loaded.geneticBuffs) loaded.geneticBuffs = [];
       if (loaded.roster) loaded.roster.forEach(b => { if (!b.growthModifiers) b.growthModifiers = {}; });
       if (loaded.hardcoreMode === undefined) loaded.hardcoreMode = false;
+      if (!Array.isArray(loaded.callCards)) loaded.callCards = [];
       profile = Object.assign(defaultProfile(), loaded);
     }
   } catch(e) { profile = defaultProfile(); }
@@ -848,6 +868,8 @@ function initState(keepCards, keepFormation) {
     totalSlipstreamHealing: 0,
     floatTexts:        [],
     peckSparks:        [],
+    projHitSparks:     [],
+    muzzleFlashes:     [],
     currentLevel:      1,
     currentDifficulty: diff,
     diffMult:          diff === 'brutal' ? 1.5 : diff === 'hard' ? 1.2 : 1.0,
@@ -1031,9 +1053,16 @@ function fireProj(fromX, fromY, toX, toY, dmg, owner, color, debuffing, rangedTy
   const d    = dist(fromX, fromY, toX, toY) || 1;
   const baseSpd = rangedType === 'rapid' ? 6.5 : rangedType === 'sniper' ? 4.0 : owner === 'bird' ? 5.5 : 3.8;
   const cx   = state.crosswindTimer > 0 ? state.crosswindX * 0.5 : 0;
-  const trail = rangedType === 'sniper' ? [] : null;
+  const trail = (rangedType === 'sniper' || rangedType === 'rapid' || rangedType === null) ? [] : null;
   const baseR = rangedType === 'rapid' ? 2 : rangedType === 'sniper' ? 5 : PROJ_R;
   const lvl   = ownerBird?.level || 1;
+  if (owner === 'bird') {
+    const aimAngle = Math.atan2(toY - fromY, toX - fromX);
+    (state.muzzleFlashes || (state.muzzleFlashes = [])).push({
+      x: fromX, y: fromY, aimAngle, color: color || '#a0e060',
+      timer: 0.08, maxTimer: 0.08,
+    });
+  }
   state.projectiles.push({
     id: ++state.projId,
     x: fromX, y: fromY,
@@ -1069,6 +1098,22 @@ function spawnPeckSparks(x, y, color) {
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       life: 0.2,
+      color: color || '#e0e0a0',
+    });
+  }
+}
+
+function spawnProjHitSparks(x, y, color) {
+  const n = 3 + Math.floor(Math.random() * 2);
+  const arr = state.projHitSparks || (state.projHitSparks = []);
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 28 + Math.random() * 40;
+    arr.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.18,
       color: color || '#e0e0a0',
     });
   }
@@ -1552,6 +1597,12 @@ function fireProjAngled(fromX, fromY, toX, toY, angleOffsetRad, dmg, owner, colo
   const cx  = state.crosswindTimer > 0 ? state.crosswindX * 0.5 : 0;
   const baseR = rangedType === 'rapid' ? 2 : rangedType === 'sniper' ? 5 : PROJ_R;
   const lvl   = ownerBird?.level || 1;
+  if (owner === 'bird') {
+    (state.muzzleFlashes || (state.muzzleFlashes = [])).push({
+      x: fromX, y: fromY, aimAngle: a, color: color || '#a0e060',
+      timer: 0.08, maxTimer: 0.08,
+    });
+  }
   state.projectiles.push({
     id: ++state.projId,
     x: fromX, y: fromY,
@@ -1653,6 +1704,24 @@ function readCallCards() {
       });
     }
   }
+}
+
+function persistCallCardsToProfile() {
+  profile.callCards = (state.callCards || []).map(c => {
+    if (!c) return null;
+    const out = { tier: c.tier, condition: c.condition, action: c.action };
+    if (c.type) out.type = c.type;
+    if (c.condOp) out.condOp = c.condOp;
+    if (c.condition2) out.condition2 = c.condition2;
+    if (c.subset) out.subset = c.subset;
+    return out;
+  });
+  saveProfile();
+}
+
+function persistCallCardsFromDOM() {
+  readCallCards();
+  persistCallCardsToProfile();
 }
 
 function checkCondition(cond) {
@@ -2076,6 +2145,7 @@ function updateBirds(dt) {
     const slotIdx   = bird.formationSlot;
     const isLeader  = slotIdx === 0;
     const sp        = bird.liveSp || SPECIES[bird.species];
+    const formBuff  = FORMATION_BUFFS[state.formation] || FORMATION_BUFFS.flying_v;
 
     // Sub-flock timer
     if (bird.subflocked) {
@@ -2192,7 +2262,8 @@ function updateBirds(dt) {
             if (bird.traits.includes('Vengeful') && state.lostBirds.length > 0) dmg *= 1.20;
             if (bird.traits.includes('Reckless'))                                dmg *= 1.10;
             if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
-            const isCrit = Math.random() < sp.critChance;
+            dmg *= formBuff.dmgMult;
+            const isCrit = Math.random() < Math.min(1, sp.critChance + formBuff.critBonus);
             if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); state.morale = Math.min(100, state.morale + 2); runLog.push('bird_crit', { birdId: bird.id, target: tgt === state.boss ? 'boss' : tgt === state.miniBoss ? 'miniboss' : (tgt.type || 'enemy'), dmg: Math.round(dmg * 10) / 10 }); }
             if (tgt === state.boss) {
               if (tgt.debuffed) dmg *= 1.12;
@@ -2264,7 +2335,8 @@ function updateBirds(dt) {
             if (bird.traits.includes('Reckless'))                                dmg *= 1.10;
             if (bird.traits.includes('Hates Drones') && tgt.type === 'drone')   dmg *= 1.30;
             if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
-            const isCrit = Math.random() < sp.critChance;
+            dmg *= formBuff.dmgMult;
+            const isCrit = Math.random() < Math.min(1, sp.critChance + formBuff.critBonus);
             if (isCrit) {
               dmg *= 2;
               spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!');
@@ -2414,7 +2486,7 @@ function updateBirds(dt) {
         ty = bird.targetY + (Math.random() - 0.5) * jitter;
       }
       const d   = dist(bird.x, bird.y, tx, ty);
-      const spd = sp.spd * spdMult * (0.4 + bird.stamina / 160) * dt * 60;
+      const spd = sp.spd * spdMult * (0.4 + bird.stamina / 160) * dt * 60 * (inSlip ? formBuff.spdMult : 1);
       if (d > 2) {
         bird.x += (tx - bird.x) / d * Math.min(d, spd);
         bird.y += (ty - bird.y) / d * Math.min(d, spd);
@@ -2519,6 +2591,7 @@ function updateBirds(dt) {
           if (bird.traits.includes('Reckless'))                                 dmg *= 1.10;
           if (bird.traits.includes('Hates Drones') && target.type === 'drone') dmg *= 1.30;
           if (bird.traits.includes('Cautious') && state.stance === 'aggressive') dmg *= 0.85;
+          dmg *= formBuff.dmgMult;
 
           let projColor   = sp.rangedType === 'rapid'  ? '#c8ff60'
                           : sp.rangedType === 'sniper' ? '#c0e8ff'
@@ -2536,21 +2609,21 @@ function updateBirds(dt) {
             // Beach Screamer: 3 fanned shots, each rolls for crit independently
             [-0.21, 0, 0.21].forEach(angleOff => {
               let shotDmg = dmg;
-              const isCrit = Math.random() < sp.critChance;
+              const isCrit = Math.random() < Math.min(1, sp.critChance + formBuff.critBonus);
               if (isCrit) { shotDmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); state.morale = Math.min(100, state.morale + 2); runLog.push('bird_crit', { birdId: bird.id, target: target === state.boss ? 'boss' : target === state.miniBoss ? 'miniboss' : (target.type || 'enemy'), dmg: Math.round(shotDmg * 10) / 10 }); }
               fireProjAngled(bird.x, bird.y, target.x, target.y, angleOff, shotDmg, 'bird', projColor, isDebuffing, sp.rangedType, bird);
             });
           } else {
-            const isCrit = Math.random() < sp.critChance;
+            const isCrit = Math.random() < Math.min(1, sp.critChance + formBuff.critBonus);
             if (isCrit) { dmg *= 2; spawnFloatText(bird.x, bird.y - 18, 'Cra Caw!'); state.morale = Math.min(100, state.morale + 2); runLog.push('bird_crit', { birdId: bird.id, target: target === state.boss ? 'boss' : target === state.miniBoss ? 'miniboss' : (target.type || 'enemy'), dmg: Math.round(dmg * 10) / 10 }); }
             fireProj(bird.x, bird.y, target.x, target.y, dmg, 'bird', projColor, isDebuffing, sp.rangedType, bird);
           }
 
           bird.flashTimer  = 0.12;
-          bird.atkCooldown = (1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.25;
+          bird.atkCooldown = ((1.0 / (sp.atkRate * atkMult)) + Math.random() * 0.25) / formBuff.atkRateMult;
           if (bird.traits.includes('Clueless')) bird.atkCooldown += Math.random() * 0.6;
         } else {
-          bird.atkCooldown = 0.4;
+          bird.atkCooldown = 0.4 / formBuff.atkRateMult;
         }
       }
     }
@@ -3063,6 +3136,11 @@ function updateProjectiles(dt) {
   state.projectiles.forEach(p => {
     if (!p.alive) return;
     p.x += p.vx; p.y += p.vy;
+    if (p.trail) {
+      p.trail.push({ x: p.x, y: p.y });
+      const maxLen = p.rangedType === 'sniper' ? 4 : p.rangedType === 'rapid' ? 6 : 4;
+      if (p.trail.length > maxLen) p.trail.shift();
+    }
     if (p.x < -20 || p.x > W+20 || p.y < -20 || p.y > H+20) { p.alive = false; return; }
 
     if (p.owner === 'bird') {
@@ -3071,6 +3149,7 @@ function updateProjectiles(dt) {
         if (dist(p.x, p.y, state.miniBoss.x, state.miniBoss.y) < 20 + PROJ_R) {
           if (p.debuffing) { state.miniBoss.debuffed = true; state.miniBoss.debuffTimer = 4; }
           let dmg = p.dmg * (state.miniBoss.debuffed ? 1.10 : 1.0);
+          spawnProjHitSparks(p.x, p.y, p.color);
           state.miniBoss.hp -= dmg; state.miniBoss.flashTimer = 0.1; p.alive = false;
           state.score += 30;
           awardBirdXP(p.ownerBird, dmg * 0.25);
@@ -3089,6 +3168,7 @@ function updateProjectiles(dt) {
           if (p.debuffing) { state.boss.debuffed = true; state.boss.debuffTimer = 6; }
           let dmg = p.dmg;
           if (state.boss.debuffed) dmg *= 1.12;
+          spawnProjHitSparks(p.x, p.y, p.color);
           state.boss.hp -= dmg; state.boss.flashTimer = 0.1; p.alive = false;
           state.score += 50;
           awardBirdXP(p.ownerBird, dmg * 0.3);
@@ -3107,6 +3187,7 @@ function updateProjectiles(dt) {
         if (dist(p.x, p.y, e.x, e.y) < ENEMY_R + PROJ_R) {
           if (p.debuffing) { e.debuffed = true; e.debuffTimer = 5; }
           let dmg = p.dmg * (e.debuffed ? 1.10 : 1.0);
+          spawnProjHitSparks(p.x, p.y, p.color);
           e.hp -= dmg; e.flashTimer = 0.1; p.alive = false;
           awardBirdXP(p.ownerBird, dmg * 0.2);
           if (e.hp <= 0) {
@@ -3123,6 +3204,11 @@ function updateProjectiles(dt) {
       for (const b of state.birds) {
         if (!b.alive) continue;
         if (dist(p.x, p.y, b.x, b.y) < BIRD_R + PROJ_R) {
+          if (state.formation === 'loose_swarm' && Math.random() < FORMATION_BUFFS.loose_swarm.dodgeChance) {
+            p.alive = false;
+            spawnFloatText(b.x, b.y - 18, 'DODGE!', '#8aaa50', 11);
+            break;
+          }
           let dmg = p.dmg;
           if (state.stance === 'evasive')    dmg *= 0.78;
           if (state.stance === 'aggressive') dmg *= 1.20;
@@ -3145,6 +3231,7 @@ function updateProjectiles(dt) {
             pb !== b && pb.alive && pb.traits.includes('Protective') && dist(pb.x, pb.y, b.x, b.y) < 60);
           if (protector && !b.traits.includes('Protective')) dmg *= 0.85;
 
+          spawnProjHitSparks(p.x, p.y, p.color);
           b.hp -= dmg; b.flashTimer = 0.2; p.alive = false;
           awardBirdXP(b, p.dmg * 0.1);
           if (b.hp <= 0) killBird(b); else checkKamikazeTrigger(b);
@@ -3173,6 +3260,22 @@ function updatePeckSparks(dt) {
     s.life -= dt;
   });
   state.peckSparks = state.peckSparks.filter(s => s.life > 0);
+}
+
+function updateProjHitSparks(dt) {
+  state.projHitSparks = state.projHitSparks || [];
+  state.projHitSparks.forEach(s => {
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.life -= dt;
+  });
+  state.projHitSparks = state.projHitSparks.filter(s => s.life > 0);
+}
+
+function updateMuzzleFlashes(dt) {
+  state.muzzleFlashes = state.muzzleFlashes || [];
+  state.muzzleFlashes.forEach(m => { m.timer -= dt; });
+  state.muzzleFlashes = state.muzzleFlashes.filter(m => m.timer > 0);
 }
 
 // ════════════════════════════════════════════════
@@ -3458,6 +3561,8 @@ function update(dt) {
   updateHazards(dt);
   updateFloatTexts(dt);
   updatePeckSparks(dt);
+  updateProjHitSparks(dt);
+  updateMuzzleFlashes(dt);
   updateCamera();
 
   updateHUD();
@@ -3602,7 +3707,9 @@ function render() {
   drawMiniBoss();
   drawBoss();
   drawBirds();
+  drawMuzzleFlashes();
   drawPeckSparks();
+  drawProjHitSparks();
   drawFloatTexts();
   if (state.isReorganizing) drawReorgOverlay();
 
@@ -3858,6 +3965,37 @@ function drawPeckSparks() {
   ctx.globalAlpha = 1;
 }
 
+function drawProjHitSparks() {
+  (state.projHitSparks || []).forEach(s => {
+    const alpha = Math.max(0, s.life / 0.18);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawMuzzleFlashes() {
+  (state.muzzleFlashes || []).forEach(m => {
+    const t = m.timer / m.maxTimer;
+    const alpha = t * 0.6;
+    const cos = Math.cos(m.aimAngle), sin = Math.sin(m.aimAngle);
+    ctx.fillStyle = m.color;
+    for (let i = 0; i < 3; i++) {
+      const dist = i * 4;
+      const x = m.x + cos * dist, y = m.y + sin * dist;
+      const r = 3 - i * 0.6;
+      ctx.globalAlpha = alpha * (1 - i * 0.25);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+
 function drawEnemies() {
   state.enemies.forEach(e => {
     if (!e.alive) return;
@@ -4053,10 +4191,8 @@ function drawProjectiles() {
             : p.rangedType === 'sniper' ? 5
             : PROJ_R);
 
-    // Sniper trail
-    if (p.rangedType === 'sniper' && p.trail !== null) {
-      p.trail.push({ x: p.x, y: p.y });
-      if (p.trail.length > 4) p.trail.shift();
+    // Sniper trail (drawn from trail array updated in updateProjectiles)
+    if (p.rangedType === 'sniper' && p.trail && p.trail.length) {
       p.trail.forEach((pt, i) => {
         const a = (i / p.trail.length) * 0.35;
         ctx.fillStyle = `rgba(192,232,255,${a})`;
@@ -4064,8 +4200,23 @@ function drawProjectiles() {
       });
     }
 
+    // Rapid / default short trail
+    if ((p.rangedType === 'rapid' || p.rangedType === null) && p.trail && p.trail.length) {
+      const len = p.trail.length;
+      const rgb = hexToRgb(p.color || '#a0e060');
+      p.trail.forEach((pt, i) => {
+        const a = (i / len) * 0.28;
+        ctx.fillStyle = `rgba(${rgb},${a})`;
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, r * 0.5, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    const blur = p.rangedType === 'sniper' ? 10
+      : p.owner === 'bird' && p.rangedType === 'rapid' ? 4
+      : p.owner === 'bird' && (p.rangedType === null || p.rangedType === 'triple') ? 6
+      : p.rangedType === 'rapid' ? 3 : 5;
     ctx.shadowColor = p.color;
-    ctx.shadowBlur  = p.rangedType === 'sniper' ? 10 : p.rangedType === 'rapid' ? 3 : 5;
+    ctx.shadowBlur  = blur;
     ctx.fillStyle   = p.color;
     ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur  = 0;
@@ -4278,7 +4429,7 @@ function buildHubUI() {
     document.getElementById('howto-btn')?.addEventListener('click', openHowto);
     document.getElementById('howto-close-btn')?.addEventListener('click', closeHowto);
     document.getElementById('retry-btn')?.addEventListener('click', retryRun);
-    document.getElementById('hub-btn')?.addEventListener('click', ()=>{ showScreen('hub'); buildHubUI(); });
+    document.getElementById('hub-btn')?.addEventListener('click', ()=>{ persistCallCardsToProfile(); showScreen('hub'); buildHubUI(); });
     document.getElementById('back-to-hub-btn')?.addEventListener('click', ()=>showScreen('hub'));
     document.getElementById('confirm-launch-btn')?.addEventListener('click', startRun);
     document.getElementById('refresh-pool-btn')?.addEventListener('click', ()=>refreshNestPool(false));
@@ -4529,6 +4680,10 @@ const ACT_SHORT = {
   trigger_screech:'→SCRCH', retreat_to_rear:'→REAR', surge_forward:'→SRG', all_dive_attack:'→DIVE',
 };
 
+const VALID_COND_KEYS = Object.keys(COND_LABELS);
+const VALID_ACT_KEYS = Object.keys(ACT_LABELS);
+const VALID_SUBSET_KEYS = Object.keys(SUBSET_LABELS);
+
 function buildCallCardSlots() {
   const container = document.getElementById('call-card-slots');
   if (!container) return;
@@ -4549,31 +4704,39 @@ function buildCallCardSlots() {
   }
 
   const defaults=[
-    {cond:'flock_hp_50',condOp:'and',cond2:'none',act:'loose_swarm',   subset:'none'},
-    {cond:'enemy_drone',condOp:'and',cond2:'none',act:'aggressive',    subset:'none'},
-    {cond:'birds_4',    condOp:'and',cond2:'none',act:'evasive',       subset:'none'},
-    {cond:'always',     condOp:'and',cond2:'none',act:'surge_forward', subset:'none'},
+    {cond:'flock_hp_50',condOp:'and',cond2:'none',act:'loose_swarm',   subset:'none',type:'if_then'},
+    {cond:'enemy_drone',condOp:'and',cond2:'none',act:'aggressive',    subset:'none',type:'if_then'},
+    {cond:'birds_4',    condOp:'and',cond2:'none',act:'evasive',       subset:'none',type:'if_then'},
+    {cond:'always',     condOp:'and',cond2:'none',act:'surge_forward', subset:'none',type:'if_then'},
   ];
 
   container.innerHTML='';
   for (let i=0;i<slots;i++) {
-    const def=defaults[i]||defaults[3];
+    const saved = profile.callCards?.[i];
+    const baseDef = defaults[i]||defaults[3];
+    const cond   = (saved && VALID_COND_KEYS.includes(saved.condition)) ? saved.condition : baseDef.cond;
+    const action = (saved && VALID_ACT_KEYS.includes(saved.action))       ? saved.action   : baseDef.act;
+    const condOp = (t2 && saved && (saved.condOp==='and'||saved.condOp==='or')) ? saved.condOp : 'and';
+    const cond2  = (t2 && saved && VALID_COND_KEYS.includes(saved.condition2))  ? saved.condition2 : 'none';
+    const type   = (t3 && saved && ['if_then','for_each','while'].includes(saved.type)) ? saved.type : 'if_then';
+    const subset = (t3 && saved && VALID_SUBSET_KEYS.includes(saved.subset))    ? saved.subset : 'none';
+
     const div=document.createElement('div'); div.className='call-card';
 
-    const condOpts   = buildSelectOptions(COND_LABELS,   def.cond);
-    const cond2Opts  = buildSelectOptions(COND_LABELS,   def.cond2);
-    const actOpts    = buildSelectOptions(ACT_LABELS,    def.act);
-    const subsetOpts = buildSelectOptions(SUBSET_LABELS, def.subset);
+    const condOpts   = buildSelectOptions(COND_LABELS,   cond);
+    const cond2Opts  = buildSelectOptions(COND_LABELS,   cond2);
+    const actOpts    = buildSelectOptions(ACT_LABELS,    action);
+    const subsetOpts = buildSelectOptions(SUBSET_LABELS, subset);
 
-    const typeRow    = t3?`<select class="card-type-select" id="card-type-${i}"><option value="if_then">IF / THEN</option><option value="for_each">FOR EACH</option><option value="while">WHILE / DO</option></select>`:'';
-    const subsetRow  = t3?`<div class="card-row-subset" id="card-subset-row-${i}" style="display:none;"><span class="card-keyword">EACH</span><select class="card-select" id="card-subset-${i}">${subsetOpts}</select></div>`:'';
-    const t2Row      = t2?`<div class="card-row-t2"><select class="card-select card-op-select" id="card-condop-${i}"><option value="and">AND</option><option value="or">OR</option></select><select class="card-select" id="card-cond2-${i}">${cond2Opts}</select></div>`:'';
+    const typeRow    = t3?`<select class="card-type-select" id="card-type-${i}"><option value="if_then"${type==='if_then'?' selected':''}>IF / THEN</option><option value="for_each"${type==='for_each'?' selected':''}>FOR EACH</option><option value="while"${type==='while'?' selected':''}>WHILE / DO</option></select>`:'';
+    const subsetRow  = t3?`<div class="card-row-subset" id="card-subset-row-${i}" style="display:${type==='for_each'?'flex':'none'};"><span class="card-keyword">EACH</span><select class="card-select" id="card-subset-${i}">${subsetOpts}</select></div>`:'';
+    const t2Row      = t2?`<div class="card-row-t2"><select class="card-select card-op-select" id="card-condop-${i}"><option value="and"${condOp==='and'?' selected':''}>AND</option><option value="or"${condOp==='or'?' selected':''}>OR</option></select><select class="card-select" id="card-cond2-${i}">${cond2Opts}</select></div>`:'';
 
     div.innerHTML=`
       <div style="display:flex;align-items:center;gap:6px;">${'<div class="card-slot-num">'+(i+1)+'</div>'}${typeRow}</div>
       ${subsetRow}
       <div class="card-row-main">
-        <span class="card-keyword" id="card-kw-${i}">IF</span>
+        <span class="card-keyword" id="card-kw-${i}">${type==='while'?'WHILE':'IF'}</span>
         <select class="card-select" id="card-cond-${i}">${condOpts}</select>
         ${t2Row}
         <span class="card-keyword">THEN</span>
@@ -4590,6 +4753,11 @@ function buildCallCardSlots() {
         if (kw)     kw.textContent       = ev.target.value==='while'?'WHILE':'IF';
       });
     }
+  }
+
+  if (!buildCallCardSlots._persistBound) {
+    buildCallCardSlots._persistBound = true;
+    container.addEventListener('change', persistCallCardsFromDOM);
   }
 }
 
@@ -5006,6 +5174,7 @@ function launchBattle() {
   if (animId) cancelAnimationFrame(animId);
   updateFormationTargets();
   readCallCards();
+  persistCallCardsToProfile();
   updateCardIndicators();
   // Show/hide 4th indicator
   const ind3=document.getElementById('card-ind-3');
